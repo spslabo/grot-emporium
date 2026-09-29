@@ -65,33 +65,17 @@ public class OrdersMetricsTests {
     event.setOrder(order);
     ordersMetrics.onOrderCreated(event);
 
-    var counter = meterRegistry
-      .get("watch.orders")
-      .tags("productId", "*")
-      .counter();
-    then(counter).isNotNull();
-    then(counter.count()).isEqualTo(1);
-
-    var woodWatchCounter = meterRegistry
-      .get("watch.orders")
-      .tags("productId", PRODUCT_2)
-      .counter();
-    then(woodWatchCounter).isNotNull();
-    then(woodWatchCounter.count()).isEqualTo(2);
-
-    var pocketWatchCounter = meterRegistry
-      .get("watch.orders")
-      .tags("productId", PRODUCT_1)
-      .counter();
-    then(pocketWatchCounter).isNotNull();
-    then(pocketWatchCounter.count()).isEqualTo(5);
-
-    var watchGauge = meterRegistry.find("watch.orderTotal").gauge();
-    then(watchGauge).isNotNull();
-    then(watchGauge.value()).isEqualTo(600.0);
-
+    then(meterRegistry.get("grot.orders.created").counter().count()).isEqualTo(1);
+    then(meterRegistry.get("grot.orders.items").counter().count()).isEqualTo(7);
+    then(meterRegistry.get("grot.orders.value").counter().count()).isEqualTo(600);
     ordersMetrics.onOrderCreated(event);
-
-    then(watchGauge.value()).isEqualTo(1200.0);
+    then(meterRegistry.get("grot.orders.value").counter().count()).isEqualTo(1200);
+    // Cardinality must remain constant even when product identifiers change.
+    for (int i = 0; i < 100; i++) {
+      order.setOrderItems(List.of(new OrderItemEntity("arbitrary-" + i, 1, 10, 10)));
+      ordersMetrics.onOrderCreated(event);
+    }
+    then(meterRegistry.getMeters()).hasSize(3);
+    then(meterRegistry.getMeters()).allSatisfy(meter -> then(meter.getId().getTags()).isEmpty());
   }
 }

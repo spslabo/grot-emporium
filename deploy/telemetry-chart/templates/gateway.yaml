@@ -1,0 +1,89 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: grot-gateway-config
+data:
+  default.conf.template: |
+{{ .Files.Get "files/default.conf.template" | indent 4 }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: grot-gateway
+spec:
+  replicas: 1
+  selector:
+    matchLabels: { app: grot-gateway }
+  template:
+    metadata:
+      labels: { app: grot-gateway }
+      annotations:
+        grot.destination: {{ .Values.destinationId | quote }}
+        checksum/config: {{ .Files.Get "files/default.conf.template" | sha256sum }}
+    spec:
+      automountServiceAccountToken: false
+      securityContext:
+        runAsUser: 101
+        runAsGroup: 101
+        fsGroup: 101
+        runAsNonRoot: true
+      containers:
+        - name: gateway
+          image: {{ .Values.gatewayImage | quote }}
+          envFrom:
+            - secretRef:
+                name: {{ required "gatewaySecret is required" .Values.gatewaySecret }}
+          env:
+            - { name: GROT_UI_UPSTREAM, value: {{ .Values.uiService | quote }} }
+            - { name: NGINX_ENTRYPOINT_LOCAL_RESOLVERS, value: "1" }
+          ports:
+            - { name: http, containerPort: 8080 }
+          readinessProbe:
+            httpGet: { path: /actuator/health, port: http }
+          resources:
+            requests: { cpu: 25m, memory: 32Mi }
+            limits: { memory: 128Mi }
+          securityContext:
+            readOnlyRootFilesystem: true
+            allowPrivilegeEscalation: false
+            capabilities: { drop: [ALL] }
+          volumeMounts:
+            - { name: template, mountPath: /etc/nginx/templates, readOnly: true }
+            - { name: rendered, mountPath: /etc/nginx/conf.d }
+            - { name: cache, mountPath: /var/cache/nginx }
+            - { name: run, mountPath: /var/run }
+      volumes:
+        - name: template
+          configMap: { name: grot-gateway-config }
+        - name: rendered
+          emptyDir: { medium: Memory }
+        - name: cache
+          emptyDir: {}
+        - name: run
+          emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: grot-gateway
+spec:
+  selector: { app: grot-gateway }
+  ports:
+    - { name: http, port: 80, targetPort: http }
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: grot-collector-ingress
+spec:
+  podSelector:
+    matchLabels: { app: grot-alloy }
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - podSelector: {}
+      ports:
+        - { protocol: TCP, port: 4318 }
+        - { protocol: TCP, port: 4317 }
+        - { protocol: TCP, port: 4040 }
+        - { protocol: TCP, port: 12345 }

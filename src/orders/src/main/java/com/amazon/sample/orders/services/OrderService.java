@@ -43,7 +43,7 @@ public class OrderService extends AbstractRelationalEventListener<OrderEntity> {
 
   @Transactional
   public OrderEntity create(OrderEntity order) {
-    System.out.println(order);
+    log.debug("Creating order");
 
     OrderEntity entity = repository.save(order);
 

@@ -1,0 +1,47 @@
+# Only internal upstreams are committed. The Faro destination is injected at runtime.
+limit_req_zone $binary_remote_addr zone=faro:1m rate=10r/s;
+server {
+  listen 8080;
+  server_tokens off;
+  access_log off;
+  # Do not print upstream URLs or request bodies into diagnostic logs.
+  error_log /dev/null;
+  resolver ${NGINX_LOCAL_RESOLVERS} valid=30s;
+  client_max_body_size 1m;
+  location = /telemetry {
+    set $faro_destination "${GRAFANA_FARO_URL}";
+    if ($faro_destination = "") { return 404; }
+    if ($request_method != POST) { return 405; }
+    if ($args != "") { return 400; }
+    limit_req zone=faro burst=40 nodelay;
+    # Allow-list telemetry headers; never forward ingress JWTs, cookies or client-IP headers.
+    proxy_pass_request_headers off;
+    proxy_set_header Content-Type $http_content_type;
+    proxy_set_header Content-Encoding $http_content_encoding;
+    proxy_set_header Origin $http_origin;
+    proxy_set_header User-Agent $http_user_agent;
+    proxy_set_header X-Faro-Session-Id $http_x_faro_session_id;
+    proxy_set_header Host $proxy_host;
+    proxy_hide_header Location;
+    proxy_hide_header Refresh;
+    proxy_hide_header WWW-Authenticate;
+    proxy_intercept_errors on;
+    error_page 301 302 303 307 308 400 401 403 404 405 408 413 415 422 429 500 502 503 504 =502 @telemetry_unavailable;
+    proxy_ssl_server_name on;
+    proxy_ssl_verify on;
+    proxy_ssl_trusted_certificate /etc/ssl/certs/ca-certificates.crt;
+    proxy_connect_timeout 5s;
+    proxy_read_timeout 15s;
+    proxy_pass $faro_destination;
+  }
+  location @telemetry_unavailable { return 502; }
+  location / {
+    proxy_pass http://${GROT_UI_UPSTREAM};
+    proxy_set_header Host $http_host;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    proxy_http_version 1.1;
+    proxy_set_header Connection "";
+    proxy_buffering off;
+    proxy_read_timeout 90s;
+  }
+}

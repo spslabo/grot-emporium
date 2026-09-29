@@ -10,7 +10,7 @@
       "inputs": ["{projectRoot}/**/*", "!{projectRoot}/dist/*"],
       "outputs": ["{projectRoot}/dist/*"],
       "options": {
-        "command": "go build -o dist/main main.go"
+        "command": "go build -o dist/main ."
       }
     },
     "test": {
@@ -38,7 +38,7 @@
     "serve": {
       "executor": "nx:run-commands",
       "options": {
-        "command": "go run main.go"
+        "command": "go run ."
       }
     },
     "manifest": {},

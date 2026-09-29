@@ -1,3 +1,11 @@
+# Reproducible browser telemetry bundle (no unpinned CDN dependency).
+FROM node:22-bookworm-slim AS frontend
+WORKDIR /ui/frontend
+COPY frontend/package*.json ./
+RUN npm ci
+COPY frontend/src ./src
+RUN npm run build
+
 # Build Stage
 FROM public.ecr.aws/amazonlinux/amazonlinux:2023 AS build-env
 
@@ -12,6 +20,9 @@ RUN dnf --setopt=install_weak_deps=False install -q -y \
     && \
     dnf clean all
 
+RUN curl -fsSL https://github.com/grafana/pyroscope-java/releases/download/v2.9.2/pyroscope.jar -o /pyroscope.jar \
+    && echo 'ad738199a90734f7b8392bae1ab892027d411acb953ef1f00cd6e8e7c669ff8f  /pyroscope.jar' | sha256sum -c -
+
 VOLUME /tmp
 WORKDIR /
 
@@ -22,6 +33,7 @@ COPY pom.xml .
 RUN ./mvnw dependency:go-offline -B -q
 
 COPY ./src ./src
+COPY --from=frontend /ui/src/main/resources/static/assets/js/grot-observability.js ./src/main/resources/static/assets/js/grot-observability.js
 
 RUN ./mvnw -DskipTests package -q && \
     mv /target/ui-0.0.1-SNAPSHOT.jar /app.jar
@@ -69,7 +81,8 @@ USER appuser
 
 COPY ./ATTRIBUTION.md ./LICENSES.md
 COPY --chown=appuser:appuser --from=build-env /app.jar .
+COPY --chown=appuser:appuser --from=build-env /pyroscope.jar .
 
 EXPOSE 8080
 
-ENTRYPOINT ["sh", "-c", "java $JAVA_OPTS -jar /app/app.jar"]
+ENTRYPOINT ["sh", "-c", "exec java $JAVA_OPTS -jar /app/app.jar"]

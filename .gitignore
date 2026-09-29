@@ -12,7 +12,12 @@ kubeconfig_*
 .idea
 node_modules
 dist
+# Built by src/ui/frontend; Docker builds this bundle from pinned dependencies.
+src/ui/src/main/resources/static/assets/js/grot-observability.js
+src/ui/src/main/resources/static/assets/js/grot-observability.js.map
 .venv
+__pycache__/
+*.py[cod]
 
 ort-build
 
@@ -25,6 +30,12 @@ Chart.lock
 screenshots
 
 .env
+*.env
+*.env.*
+values.private.*
+*.rendered.yaml
+*.rendered.yml
+.grot-private/
 .direnv
 
 .pre-commit-config.yaml

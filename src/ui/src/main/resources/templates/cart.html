@@ -19,25 +19,26 @@
           </div>
           <div th:if="${fullCart.items.size() > 0}">
             <div
-              class="flex border-b py-4 space-x-4 cart-item"
+              class="border-b py-4 cart-item"
               th:each="item : ${fullCart.items}"
             >
               <img
-                src="https://via.placeholder.com/100"
-                alt="Product"
-                class="w-[100px] h-[100px] rounded"
+                src="/assets/img/grots/original.jpeg"
+                alt="Grot squishy"
+                th:alt="${item.name}"
+                width="100"
+                height="100"
+                class="cart-item-image"
                 th:src="@{/assets/img/products/{itemId}.jpg(itemId=${item.id})}"
               />
-              <div class="flex-1">
+              <div class="cart-item-details">
                 <h2 th:text="${item.name}" class="item-name">Product Name</h2>
                 <p class="text-sm text-gray-600">
                   <th:block th:text="#{field.quantity}"></th:block>:
-                  <th:block th:text="${item.quantity}" class="item-quantity"
-                    >1</th:block
-                  >
+                  <span th:text="${item.quantity}" class="item-quantity">1</span>
                 </p>
               </div>
-              <div class="text-right">
+              <div class="cart-item-actions">
                 <p>$<th:block th:text="${item.totalPrice}">299</th:block></p>
                 <p class="text-sm text-gray-600">
                   $<th:block class="item-price" th:text="${item.price}"

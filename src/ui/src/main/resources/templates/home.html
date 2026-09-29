@@ -13,8 +13,8 @@
           <div class="flex justify-between items-center h-16">
             <a th:href="@{/}">
               <div class="flex items-center">
-                <i class="fas fa-briefcase text-2xl text-white switch"></i>
-                <span class="ml-2 text-xl text-white switch">&nbsp;</span>
+                <i class="fas fa-star text-2xl text-white switch" aria-hidden="true"></i>
+                <span class="ml-2 text-xl text-white switch" th:text="#{brand.name}">Grot Emporium</span>
               </div>
             </a>
             <div class="flex items-center space-x-12">
@@ -116,8 +116,8 @@
       <!-- Background Image with Overlay -->
       <div class="absolute inset-0">
         <img
-          th:src="@{/assets/img/hero.jpg}"
-          alt="Hero Background"
+          th:src="@{/assets/img/grots/original.jpeg}"
+          alt="Original Grot silicone squishy"
           class="w-full h-full object-cover"
         />
         <div class="absolute inset-0 bg-black/70"></div>
@@ -149,12 +149,12 @@
       <!-- Content -->
       <div class="relative z-10 max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
         <h1 class="text-4xl sm:text-5xl font-bold text-white mb-6">
-          The most public <span class="text-primary-400">Secret Shop</span>
+          Big adventures. <span class="text-primary-400">Squishy Grots.</span>
         </h1>
         <p
           class="text-xl md:text-2xl text-white/90 mb-8 max-w-2xl mx-auto text-gray-300"
         >
-          Everything a secret agent needs, minus the paperwork
+          Meet your next desk companion. Nine orange Grots, endless personality.
         </p>
         <div class="flex gap-4">
           <a
@@ -224,11 +224,10 @@
                 <i class="fas fa-shipping-fast text-4xl"></i>
               </div>
               <h3 class="text-xl font-semibold text-gray-800 mb-2">
-                Covert Shipping
+                A New Home for Every Grot
               </h3>
               <p class="text-gray-600">
-                Disguised packages. So stealthy, even your cat won't detect
-                them.
+                Pick your favorite squishy and give your desk a little more personality.
               </p>
             </div>
 
@@ -237,10 +236,10 @@
                 <i class="fas fa-medal text-4xl"></i>
               </div>
               <h3 class="text-xl font-semibold text-gray-800 mb-2">
-                Mission Guarantee
+                Always Grot Orange
               </h3>
               <p class="text-gray-600">
-                Gadget failed? We'll replace it and destroy all evidence.
+                Original orange charm, smooth silicone, and a different adventure for every Grot.
               </p>
             </div>
 
@@ -250,8 +249,7 @@
               </div>
               <h3 class="text-xl font-semibold text-gray-800 mb-2">Support</h3>
               <p class="text-gray-600">
-                Encrypted help from our undercover agents, available on secure
-                channels.
+                Need help choosing? Ask our Grot shopping assistant. This is a demo store, not a real checkout.
               </p>
             </div>
           </div>

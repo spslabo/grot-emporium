@@ -22,35 +22,33 @@ import com.amazon.sample.events.orders.OrderCreatedEvent;
 import com.amazon.sample.orders.entities.OrderItemEntity;
 import io.micrometer.core.instrument.Counter;
 import io.micrometer.core.instrument.MeterRegistry;
-import java.util.HashMap;
-import java.util.Map;
-import java.util.concurrent.atomic.AtomicInteger;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.event.TransactionalEventListener;
 
 @Component
 public class OrdersMetrics {
 
-  private Counter orderCreatedCounter;
-  private AtomicInteger orderTotal;
-  private MeterRegistry meterRegistry;
-  private Map<String, Counter> watchCounters = new HashMap<>();
+  private final Counter orderCreatedCounter;
+  private final Counter itemCounter;
+  private final Counter orderValueCounter;
 
   public OrdersMetrics(MeterRegistry meterRegistry) {
-    this.meterRegistry = meterRegistry;
-    this.orderCreatedCounter = Counter.builder("watch.orders")
-      .tag("productId", "*")
+    this.orderCreatedCounter = Counter.builder("grot.orders.created")
       .description("The number of orders placed")
       .register(meterRegistry);
-    this.orderTotal = new AtomicInteger(0);
-    meterRegistry.gauge("watch.orderTotal", orderTotal);
+    this.itemCounter = Counter.builder("grot.orders.items")
+      .description("Total items ordered; no customer or product ID labels")
+      .register(meterRegistry);
+    this.orderValueCounter = Counter.builder("grot.orders.value")
+      .description("Total order item value in application price units")
+      .register(meterRegistry);
   }
 
   @TransactionalEventListener
   public void onOrderCreated(OrderCreatedEvent event) {
     this.orderCreatedCounter.increment();
     for (OrderItemEntity orderentity : event.getOrder().getOrderItems()) {
-      getCounter(orderentity).increment(orderentity.getQuantity());
+      itemCounter.increment(Math.max(0, orderentity.getQuantity()));
     }
     int totalPrice = event
       .getOrder()
@@ -58,16 +56,6 @@ public class OrdersMetrics {
       .stream()
       .map(x -> x.getTotalCost())
       .reduce(0, Integer::sum);
-    this.orderTotal.getAndAdd(totalPrice);
-  }
-
-  private Counter getCounter(OrderItemEntity orderentity) {
-    if (null == watchCounters.get(orderentity.getProductId())) {
-      Counter counter = Counter.builder("watch.orders")
-        .tag("productId", orderentity.getProductId())
-        .register(meterRegistry);
-      watchCounters.put(orderentity.getProductId(), counter);
-    }
-    return watchCounters.get(orderentity.getProductId());
+    this.orderValueCounter.increment(Math.max(0, totalPrice));
   }
 }

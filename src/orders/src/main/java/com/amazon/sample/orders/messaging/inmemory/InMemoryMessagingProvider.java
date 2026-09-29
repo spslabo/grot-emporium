@@ -26,6 +26,6 @@ public class InMemoryMessagingProvider implements MessagingProvider {
 
   @Override
   public void publishEvent(Object event) {
-    log.info("Publishing event {}", event);
+    log.info("Publishing order-created event");
   }
 }

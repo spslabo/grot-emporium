@@ -1,0 +1,102 @@
+# Five real HTTP services, ephemeral in-memory persistence. No AWS or model calls.
+# Only the UI binds a host port; this is NOT the production deployment definition.
+name: grot-local
+x-telemetry: &telemetry
+  OTEL_SDK_DISABLED: "false"
+  OTEL_EXPORTER_OTLP_ENDPOINT: http://collector:4318
+  OTEL_EXPORTER_OTLP_PROTOCOL: http/protobuf
+  OTEL_METRICS_EXPORTER: none
+  OTEL_LOGS_EXPORTER: none
+  OTEL_TRACES_SAMPLER: always_on
+  OTEL_RESOURCE_ATTRIBUTES: service.namespace=grot-emporium,deployment.environment=local,service.version=local-test
+  AWS_EC2_METADATA_DISABLED: "true"
+x-java-health: &java-health
+  test: ["CMD", "curl", "-fsS", "http://localhost:8080/actuator/health"]
+  interval: 3s
+  timeout: 3s
+  retries: 30
+services:
+  collector:
+    image: otel/opentelemetry-collector-contrib:0.123.0
+    command: ["--config=/etc/otel.yaml"]
+    volumes:
+      - ./collector.yaml:/etc/otel.yaml:ro
+      - traces:/data
+  ui:
+    build: ../../src/ui
+    image: grot-ui:local
+    ports: ["127.0.0.1:${GROT_LOCAL_PORT:-18770}:8080"]
+    healthcheck: *java-health
+    environment:
+      <<: *telemetry
+      OTEL_SERVICE_NAME: grot-ui
+      RETAIL_UI_ENDPOINTS_CATALOG: http://catalog:8080
+      RETAIL_UI_ENDPOINTS_CARTS: http://cart:8080
+      RETAIL_UI_ENDPOINTS_CHECKOUT: http://checkout:8080
+      RETAIL_UI_ENDPOINTS_ORDERS: http://orders:8080
+      RETAIL_UI_CHAT_ENABLED: "false"
+    depends_on: [collector, catalog, cart, checkout, orders]
+  catalog:
+    build: ../../src/catalog
+    image: grot-catalog:local
+    healthcheck:
+      <<: *java-health
+      test: ["CMD", "curl", "-fsS", "http://localhost:8080/health"]
+    environment:
+      <<: *telemetry
+      OTEL_SERVICE_NAME: grot-catalog
+      GIN_MODE: release
+  cart:
+    build: ../../src/cart
+    image: grot-cart:local
+    healthcheck: *java-health
+    environment:
+      <<: *telemetry
+      OTEL_SERVICE_NAME: grot-cart
+  checkout:
+    build: ../../src/checkout
+    image: grot-checkout:local
+    healthcheck:
+      <<: *java-health
+      test: ["CMD", "curl", "-fsS", "http://localhost:8080/health"]
+    environment:
+      <<: *telemetry
+      OTEL_SERVICE_NAME: grot-checkout
+      RETAIL_CHECKOUT_ENDPOINTS_ORDERS: http://orders:8080
+  orders:
+    build: ../../src/orders
+    image: ${GROT_ORDERS_IMAGE:-grot-orders:local}
+    healthcheck: *java-health
+    environment:
+      <<: *telemetry
+      OTEL_SERVICE_NAME: grot-orders
+  browser:
+    image: grafana/k6:2.3.0-with-browser
+    profiles: [test]
+    volumes: ["../..:/work:ro"]
+    working_dir: /work
+    environment:
+      BASE_URL: http://ui:8080
+      TARGET_AUTHORIZED: "true"
+      K6_BROWSER_ARGS: no-sandbox
+    command: ["run", "tests/k6/browser.js"]
+  verify-traces:
+    image: python:3.12-alpine
+    profiles: [test]
+    volumes: ["./assert_traces.py:/test.py:ro", "traces:/data:ro"]
+    command: ["python", "/test.py", "/data/grot-traces.json"]
+  k6:
+    image: grafana/k6:2.3.0
+    profiles: [test]
+    volumes: ["../..:/work:ro"]
+    working_dir: /work
+    environment:
+      BASE_URL: http://ui:8080
+      TARGET_AUTHORIZED: "true"
+    command: ["run", "tests/k6/shopping.js"]
+volumes:
+  traces:
+    driver_opts:
+      type: tmpfs
+      device: tmpfs
+      o: size=64m,mode=1777

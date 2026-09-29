@@ -34,18 +34,10 @@ import (
 	"github.com/aws-containers/retail-store-sample-app/catalog/repository"
 	"github.com/gin-gonic/gin"
 	_ "github.com/go-sql-driver/mysql"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/sethvargo/go-envconfig/pkg/envconfig"
-	ginprometheus "github.com/zsais/go-gin-prometheus"
 
-	"go.opentelemetry.io/contrib/detectors/aws/ec2"
 	"go.opentelemetry.io/contrib/instrumentation/github.com/gin-gonic/gin/otelgin"
-	"go.opentelemetry.io/contrib/propagators/aws/xray"
-	"go.opentelemetry.io/otel"
-
-	"go.opentelemetry.io/otel/exporters/otlp/otlptrace"
-	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp"
-	"go.opentelemetry.io/otel/propagation"
-	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 )
 
 // @title Catalog API
@@ -61,13 +53,26 @@ import (
 func main() {
 	ctx := context.Background()
 
-	_, otelPresent := os.LookupEnv("OTEL_SERVICE_NAME")
-
-	if otelPresent {
-		_, err := initTracer(ctx)
+	configureLogging()
+	profiler, err := startProfiling()
+	if err != nil {
+		log.Fatal(err)
+	}
+	if profiler != nil {
+		defer profiler.Stop()
+	}
+	if os.Getenv("OTEL_SERVICE_NAME") != "" && os.Getenv("OTEL_SDK_DISABLED") == "false" {
+		tp, err := initTracer(ctx)
 		if err != nil {
 			log.Fatal(err)
 		}
+		defer func() {
+			flushCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer cancel()
+			if err := tp.Shutdown(flushCtx); err != nil {
+				log.Printf("tracer shutdown: %v", err)
+			}
+		}()
 	}
 
 	var config config.AppConfiguration
@@ -106,12 +111,11 @@ func main() {
 	}
 
 	r := gin.New()
-	r.Use(gin.LoggerWithConfig(gin.LoggerConfig{
-		SkipPaths: []string{"/health"},
-	}))
+	r.Use(otelgin.Middleware("catalog-server"))
+	r.Use(accessLog())
+	r.Use(gin.Recovery())
 
-	p := ginprometheus.NewPrometheus("gin")
-	p.Use(r)
+	r.GET("/metrics", gin.WrapH(promhttp.Handler()))
 
 	c, err := controller.NewController(api)
 	if err != nil {
@@ -125,7 +129,6 @@ func main() {
 	catalog := r.Group("/catalog")
 
 	catalog.Use(chaosController.ChaosMiddleware())
-	catalog.Use(otelgin.Middleware("catalog-server"))
 
 	catalog.GET("/products", c.GetProducts)
 
@@ -189,23 +192,4 @@ func main() {
 	}
 
 	log.Println("Server exiting")
-}
-
-func initTracer(ctx context.Context) (*sdktrace.TracerProvider, error) {
-	client := otlptracehttp.NewClient()
-	exporter, err := otlptrace.New(ctx, client)
-	if err != nil {
-		return nil, fmt.Errorf("creating OTLP trace exporter: %w", err)
-	}
-	idg := xray.NewIDGenerator()
-	ec2ResourceDetector := ec2.NewResourceDetector()
-	resource, _ := ec2ResourceDetector.Detect(context.Background())
-	tp := sdktrace.NewTracerProvider(
-		sdktrace.WithBatcher(exporter),
-		sdktrace.WithIDGenerator(idg),
-		sdktrace.WithResource(resource),
-	)
-	otel.SetTextMapPropagator(propagation.NewCompositeTextMapPropagator(propagation.TraceContext{}, propagation.Baggage{}))
-	otel.SetTracerProvider(tp)
-	return tp, nil
 }

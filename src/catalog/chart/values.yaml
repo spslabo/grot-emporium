@@ -23,6 +23,11 @@ serviceAccount:
   name: ""
 
 podAnnotations: {}
+podLabels: {}
+extraEnv: []
+extraEnvFrom: []
+# Existing Secret containing this service's private runtime environment.
+runtimeSecret: ""
 
 podSecurityContext:
   fsGroup: 1000

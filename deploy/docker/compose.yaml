@@ -1,0 +1,66 @@
+# Portable, ephemeral demo. No AWS/Grafana account required. Docker Compose >=2.30.
+name: grot-emporium
+x-backend-env: &backend-env
+  # Literal values: no interpolation of $, quotes, or # inside credentials.
+  - path: ${GROT_BACKEND_ENV_FILE:-/dev/null}
+    format: raw
+x-java-health: &java-health
+  test: ["CMD", "curl", "-fsS", "http://localhost:8080/actuator/health"]
+  interval: 5s
+  timeout: 3s
+  retries: 30
+services:
+  ui:
+    build: ../../src/ui
+    image: ${GROT_IMAGE_PREFIX:-grot}/ui:${GROT_IMAGE_TAG:-local}
+    ports: ["127.0.0.1:${GROT_PORT:-8080}:8080"]
+    env_file:
+      - path: ${GROT_BACKEND_ENV_FILE:-/dev/null}
+        format: raw
+      - path: ${GROT_UI_ENV_FILE:-/dev/null}
+        format: raw
+    environment:
+      OTEL_SERVICE_NAME: grot-ui
+      AWS_EC2_METADATA_DISABLED: "true"
+      RETAIL_UI_ENDPOINTS_CATALOG: http://catalog:8080
+      RETAIL_UI_ENDPOINTS_CARTS: http://cart:8080
+      RETAIL_UI_ENDPOINTS_CHECKOUT: http://checkout:8080
+      RETAIL_UI_ENDPOINTS_ORDERS: http://orders:8080
+    healthcheck: *java-health
+    depends_on: [catalog, cart, checkout, orders]
+  cart:
+    build: ../../src/cart
+    image: ${GROT_IMAGE_PREFIX:-grot}/cart:${GROT_IMAGE_TAG:-local}
+    env_file: *backend-env
+    environment:
+      OTEL_SERVICE_NAME: grot-cart
+      AWS_EC2_METADATA_DISABLED: "true"
+    healthcheck: *java-health
+  orders:
+    build: ../../src/orders
+    image: ${GROT_IMAGE_PREFIX:-grot}/orders:${GROT_IMAGE_TAG:-local}
+    env_file: *backend-env
+    environment:
+      OTEL_SERVICE_NAME: grot-orders
+      AWS_EC2_METADATA_DISABLED: "true"
+    healthcheck: *java-health
+  catalog:
+    build: ../../src/catalog
+    image: ${GROT_IMAGE_PREFIX:-grot}/catalog:${GROT_IMAGE_TAG:-local}
+    env_file: *backend-env
+    environment:
+      OTEL_SERVICE_NAME: grot-catalog
+      GIN_MODE: release
+    healthcheck:
+      <<: *java-health
+      test: ["CMD", "curl", "-fsS", "http://localhost:8080/health"]
+  checkout:
+    build: ../../src/checkout
+    image: ${GROT_IMAGE_PREFIX:-grot}/checkout:${GROT_IMAGE_TAG:-local}
+    env_file: *backend-env
+    environment:
+      OTEL_SERVICE_NAME: grot-checkout
+      RETAIL_CHECKOUT_ENDPOINTS_ORDERS: http://orders:8080
+    healthcheck:
+      <<: *java-health
+      test: ["CMD", "curl", "-fsS", "http://localhost:8080/health"]

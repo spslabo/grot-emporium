@@ -1,0 +1,15 @@
+# Opt-in Java profiler activation. Set PYROSCOPE_ENABLED=true and its receiver
+# address in the private backend env file (Go/Node read those variables directly).
+services:
+  ui:
+    environment:
+      JAVA_TOOL_OPTIONS: -javaagent:/app/pyroscope.jar
+      PYROSCOPE_APPLICATION_NAME: grot-ui
+  cart:
+    environment:
+      JAVA_TOOL_OPTIONS: -javaagent:/app/pyroscope.jar
+      PYROSCOPE_APPLICATION_NAME: grot-cart
+  orders:
+    environment:
+      JAVA_TOOL_OPTIONS: -javaagent:/app/pyroscope.jar
+      PYROSCOPE_APPLICATION_NAME: grot-orders

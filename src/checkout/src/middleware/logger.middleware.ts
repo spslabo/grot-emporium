@@ -18,23 +18,38 @@
 
 import { Injectable, Logger, NestMiddleware } from '@nestjs/common';
 import { Request, Response, NextFunction } from 'express';
+import { context, trace } from '@opentelemetry/api';
+import { InjectMetric } from '@willsoto/nestjs-prometheus';
+import { Histogram } from 'prom-client';
 
 @Injectable()
 export class LoggerMiddleware implements NestMiddleware {
   private logger = new Logger(`HTTP`);
+  constructor(@InjectMetric('http_server_request_duration_seconds') private readonly duration: Histogram<string>) {}
   use(request: Request, response: Response, next: NextFunction) {
     const startAt = process.hrtime();
-    const { ip, method, originalUrl } = request;
-    const userAgent = request.get('user-agent') || '';
+    const { method } = request;
+    const spanContext = trace.getSpan(context.active())?.spanContext();
 
     response.on('finish', () => {
       const { statusCode } = response;
-      const contentLength = response.get('content-length');
       const diff = process.hrtime(startAt);
       const responseTime = diff[0] * 1e3 + diff[1] * 1e-6;
-      this.logger.log(
-        `${method} ${originalUrl} ${statusCode} ${responseTime}ms ${contentLength} - ${userAgent} ${ip}`,
-      );
+      const route = request.route?.path || 'unmatched';
+      if (route !== '/metrics') {
+        this.duration.observe({ method, route, status: String(statusCode) }, responseTime / 1000);
+      }
+      this.logger.log({
+        event: 'http_request',
+        service_name: process.env.OTEL_SERVICE_NAME || 'grot-checkout',
+        service_namespace: 'grot-emporium',
+        method,
+        route,
+        status: statusCode,
+        duration_ms: responseTime,
+        trace_id: spanContext?.traceId,
+        span_id: spanContext?.spanId,
+      });
     });
 
     next();

@@ -18,8 +18,8 @@
 
 const ChatUI = {
   elements: null,
-  converter: null,
   contextPath: null,
+  conversationId: null,
 
   init(contextPath) {
     this.elements = {
@@ -32,9 +32,9 @@ const ChatUI = {
       closeChat: document.getElementById("close-chat"),
     };
     this.contextPath = contextPath;
-    this.converter = new showdown.Converter();
+    this.conversationId = crypto.randomUUID();
     this.bindEvents();
-    this.appendMessage("bot", "Greetings operative! How can I help you?");
+    this.appendMessage("bot", "Welcome to Grot Emporium! Which squishy adventure can I help you find?");
 
     const chatTriggerContainer = document.getElementById(
       "chat-trigger-container",
@@ -73,6 +73,7 @@ const ChatUI = {
   },
 
   clearMessages() {
+    this.conversationId = crypto.randomUUID();
     this.elements.chatMessages.innerHTML = "";
 
     this.elements.userInput.value = "";
@@ -106,7 +107,7 @@ const ChatUI = {
     if (sender === "bot") {
       // Bot avatar - using image
       const avatar = document.createElement("img");
-      avatar.src = `${this.contextPath}assets/img/chat-avatar-mini.jpg`;
+      avatar.src = `${this.contextPath}assets/img/grots/original.jpeg`;
       avatar.alt = "Chat Avatar";
       avatar.className = "w-10 h-10 rounded-full object-cover";
       avatarContainer.appendChild(avatar);
@@ -185,7 +186,8 @@ const ChatUI = {
 
   updateBotMessage(messageDiv, text) {
     const textDiv = messageDiv.querySelector(".message-text");
-    textDiv.innerHTML = this.converter.makeHtml(text);
+    // Model output is untrusted; render text rather than executable HTML.
+    textDiv.textContent = text;
     this.scrollToBottom();
   },
 
@@ -223,13 +225,15 @@ const ChatUI = {
     const decoder = new TextDecoder();
     let runningText = "";
     let botMessageDiv = null;
+    let pending = "";
 
     while (true) {
       const { value, done } = await reader.read();
       if (done) break;
 
-      const chunk = decoder.decode(value);
-      const lines = chunk.split("\n\n");
+      pending += decoder.decode(value, { stream: true });
+      const lines = pending.split("\n\n");
+      pending = lines.pop();
 
       for (const line of lines) {
         if (line.startsWith("data:")) {
@@ -259,7 +263,7 @@ const ChatUI = {
         "Content-Type": "application/json",
         Accept: "text/event-stream",
       },
-      body: JSON.stringify({ message }),
+      body: JSON.stringify({ message, conversationId: this.conversationId }),
     });
   },
 };

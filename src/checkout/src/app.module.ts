@@ -23,12 +23,13 @@ import { ConfigModule } from '@nestjs/config';
 import { TerminusModule } from '@nestjs/terminus';
 import { CheckoutModule } from './checkout/checkout.module';
 import { LoggerMiddleware } from './middleware/logger.middleware';
-import { PrometheusModule } from '@willsoto/nestjs-prometheus';
+import { PrometheusModule, makeHistogramProvider } from '@willsoto/nestjs-prometheus';
 import { OpenTelemetryModule } from 'nestjs-otel';
 import { ChaosController } from './chaos/chaos.controller';
 import { ChaosService } from './chaos/chaos.service';
 import { ChaosHealthIndicator } from './chaos/chaos.health';
 import { ChaosMiddleware } from './chaos/chaos.middleware';
+import { TelemetryLifecycle } from './telemetry.lifecycle';
 
 const OpenTelemetryModuleConfig = OpenTelemetryModule.forRoot({});
 
@@ -43,7 +44,14 @@ const OpenTelemetryModuleConfig = OpenTelemetryModule.forRoot({});
     OpenTelemetryModuleConfig,
   ],
   controllers: [AppController, ChaosController],
-  providers: [ChaosService, ChaosHealthIndicator],
+  providers: [ChaosService, ChaosHealthIndicator, TelemetryLifecycle,
+    makeHistogramProvider({
+      name: 'http_server_request_duration_seconds',
+      help: 'Checkout HTTP duration by bounded route, method, and status.',
+      labelNames: ['method', 'route', 'status'],
+      buckets: [0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10],
+    }),
+  ],
 })
 export class AppModule implements NestModule {
   configure(consumer: MiddlewareConsumer) {

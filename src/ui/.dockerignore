@@ -6,3 +6,8 @@ chart
 scripts
 target
 .idea
+frontend/node_modules
+src/main/resources/static/assets/js/grot-observability.js
+src/main/resources/static/assets/js/grot-observability.js.map
+.env
+.env.*

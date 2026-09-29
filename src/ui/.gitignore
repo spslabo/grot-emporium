@@ -3,6 +3,9 @@ target/
 .mvn/wrapper/maven-wrapper.jar
 !**/src/main/**
 !**/src/test/**
+# Generated from frontend/src with npm run build.
+/src/main/resources/static/assets/js/grot-observability.js
+/src/main/resources/static/assets/js/grot-observability.js.map
 
 ### STS ###
 .apt_generated

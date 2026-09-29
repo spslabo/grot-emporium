@@ -1,0 +1,5 @@
+apiVersion: v2
+name: grot-telemetry
+description: Namespace-scoped Grot collector and private-destination browser proxy
+type: application
+version: 0.1.0

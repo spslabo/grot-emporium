@@ -1,180 +1,75 @@
-![Banner](./docs/images/banner.png)
+# Grot Emporium
 
-<div align="center">
-  <div align="center">
+A nine-product Grot squishy store with Java, Go and Node services, instrumented for **Grafana Cloud**. Based on the [AWS retail store sample](https://github.com/aws-containers/retail-store-sample-app).
 
-[![Stars](https://img.shields.io/github/stars/aws-containers/retail-store-sample-app)](Stars)
-![GitHub License](https://img.shields.io/github/license/aws-containers/retail-store-sample-app?color=green)
-![Dynamic JSON Badge](https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fraw.githubusercontent.com%2Faws-containers%2Fretail-store-sample-app%2Frefs%2Fheads%2Fmain%2F.release-please-manifest.json&query=%24%5B%22.%22%5D&label=release)
-![GitHub Release Date](https://img.shields.io/github/release-date/aws-containers/retail-store-sample-app)
+**Grafana Cloud is required for the observability demo.** Cloud applications such as Application Observability require the corresponding products and permissions in your stack; this repository does not install them.
 
-  </div>
+## Dependencies
 
-  <strong>
-  <h2>AWS Containers Retail Sample</h2>
-  </strong>
-</div>
+| Dependency | Required for |
+|---|---|
+| Python 3 | Launcher and verification commands |
+| Docker with Compose 2.30+ | Docker deployment and local browser/shopping probes |
+| kubectl and Helm 3/4 | Kubernetes deployment; requires an existing cluster |
+| [gcx](https://github.com/grafana/gcx) | Grafana Cloud query checks: `verify --grafana-context` and `verify-cloud` |
+| Grafana Cloud stack and ingestion credentials | Telemetry export |
 
-This is a sample application designed to illustrate various concepts related to containers on AWS. It presents a sample retail store application including a product catalog, shopping cart and checkout.
+Install [gcx](https://github.com/grafana/gcx), then authenticate a named Cloud context:
 
-It provides:
-
-- A demo store-front application with themes, pages to show container and application topology information, generative AI chat bot and utility functions for experimentation and demos.
-- An optional distributed component architecture using various languages and frameworks
-- A variety of different persistence backends for the various components like MariaDB (or MySQL), DynamoDB and Redis
-- The ability to run in different container orchestration technologies like Docker Compose, Kubernetes etc.
-- Pre-built container images for both x86-64 and ARM64 CPU architectures
-- All components instrumented for Prometheus metrics and OpenTelemetry OTLP tracing
-- Support for Istio on Kubernetes
-- Load generator which exercises all of the infrastructure
-
-See the [features documentation](./docs/features.md) for more information.
-
-**This project is intended for educational purposes only and not for production use**
-
-![Screenshot](/docs/images/screenshot.png)
-
-## Application Architecture
-
-The application has been deliberately over-engineered to generate multiple de-coupled components. These components generally have different infrastructure dependencies, and may support multiple "backends" (example: Carts service supports MongoDB or DynamoDB).
-
-![Architecture](/docs/images/architecture.png)
-
-| Component                  | Language | Container Image                                                             | Helm Chart                                                                        | Description                             |
-| -------------------------- | -------- | --------------------------------------------------------------------------- | --------------------------------------------------------------------------------- | --------------------------------------- |
-| [UI](./src/ui/)            | Java     | [Link](https://gallery.ecr.aws/aws-containers/retail-store-sample-ui)       | [Link](https://gallery.ecr.aws/aws-containers/retail-store-sample-ui-chart)       | Store user interface                    |
-| [Catalog](./src/catalog/)  | Go       | [Link](https://gallery.ecr.aws/aws-containers/retail-store-sample-catalog)  | [Link](https://gallery.ecr.aws/aws-containers/retail-store-sample-catalog-chart)  | Product catalog API                     |
-| [Cart](./src/cart/)        | Java     | [Link](https://gallery.ecr.aws/aws-containers/retail-store-sample-cart)     | [Link](https://gallery.ecr.aws/aws-containers/retail-store-sample-cart-chart)     | User shopping carts API                 |
-| [Orders](./src/orders)     | Java     | [Link](https://gallery.ecr.aws/aws-containers/retail-store-sample-orders)   | [Link](https://gallery.ecr.aws/aws-containers/retail-store-sample-orders-chart)   | User orders API                         |
-| [Checkout](./src/checkout) | Node     | [Link](https://gallery.ecr.aws/aws-containers/retail-store-sample-checkout) | [Link](https://gallery.ecr.aws/aws-containers/retail-store-sample-checkout-chart) | API to orchestrate the checkout process |
-
-## Quickstart
-
-The following sections provide quickstart instructions for various platforms.
-
-### Docker
-
-This deployment method will run the application as a single container on your local machine using `docker`.
-
-Pre-requisites:
-
-- Docker installed locally
-
-Run the container:
-
-```
-docker run -it --rm -p 8888:8080 public.ecr.aws/aws-containers/retail-store-sample-ui:1.0.0
+```sh
+gcx login demo-cloud
+gcx --context demo-cloud config check
 ```
 
-Open the frontend in a browser window:
+`gcx login demo-cloud` creates a named context (or reauthenticates an existing one). Follow the prompts to select your Grafana Cloud stack and sign in. Its query credentials are separate from the telemetry ingestion token.
 
-```
-http://localhost:8888
-```
+`--grafana-context demo-cloud` tells the helper to run its read-only queries with `gcx --context demo-cloud`. This selects the stack to query, independently of the deployment alias; it does not change the app's telemetry destination.
 
-To stop the container in `docker` use Ctrl+C.
+The verification commands are optional helpers using fixed queries and assertions, with **no AI/model dependency, model credentials or model calls**. You can verify ingestion independently in Grafana Explore, the Cloud applications, or with your own queries and tooling. See [verification and limits](deploy/README.md#verification-and-limits).
 
-### Docker Compose
+## Docker
 
-This deployment method will run the application on your local machine using `docker-compose`.
-
-Pre-requisites:
-
-- Docker installed locally
-
-Download the latest Docker Compose file and use `docker compose` to run the application containers:
-
-```
-wget https://github.com/aws-containers/retail-store-sample-app/releases/latest/download/docker-compose.yaml
-
-DB_PASSWORD='<some password>' docker compose --file docker-compose.yaml up
+```sh
+./grot docker customer-demo
+./grot verify customer-demo --grafana-context demo-cloud
+./grot stop customer-demo
 ```
 
-Open the frontend in a browser window:
+Open `http://localhost:8080`. Hidden prompts collect ingestion settings. Credentials are held in memory-backed runtime files, not host profiles or image layers. Stop removes this demo's containers, credentials and telemetry buffers.
 
-```
-http://localhost:8888
-```
+## Kubernetes quick — including k3s
 
-To stop the containers in `docker compose` use Ctrl+C. To delete all the containers and related resources run:
+Requires an existing cluster, kubectl, Helm 3/4 and registry-accessible images:
 
-```
-docker compose -f docker-compose.yaml down
-```
-
-### Kubernetes
-
-This deployment method will run the application in an existing Kubernetes cluster.
-
-Pre-requisites:
-
-- Kubernetes cluster
-- `kubectl` installed locally
-
-Use `kubectl` to run the application:
-
-```
-kubectl apply -f https://github.com/aws-containers/retail-store-sample-app/releases/latest/download/kubernetes.yaml
-kubectl wait --for=condition=available deployments --all
+```sh
+./grot k8s customer-demo --mode quick --context "$CONTEXT" \
+  --image-prefix "$IMAGE_PREFIX" --image-tag "$VERSION"
+./grot verify customer-demo --context "$CONTEXT" --grafana-context demo-cloud
+./grot stop customer-demo --context "$CONTEXT"
 ```
 
-Get the URL for the frontend load balancer like so:
+The launcher prompts for settings and creates demo-owned Secrets in `grot-customer-demo`. Cleanup removes owned Secrets but retains the namespace and external Secrets.
 
+## Kubernetes long-term
+
+Supply the four runtime Secrets through your team's secret-management tooling:
+
+```sh
+./grot k8s customer-demo --mode long-term --context "$CONTEXT" \
+  --image-prefix "$IMAGE_PREFIX" --image-tag "$VERSION"
 ```
-kubectl get svc ui
-```
 
-To remove the application use `kubectl` again:
+Uses the same charts without modifying or deleting external Secrets. See the [deployment guide](deploy/README.md) for Secret keys, image publication, browser access, rotation and cleanup.
 
-```
-kubectl delete -f https://github.com/aws-containers/retail-store-sample-app/releases/latest/download/kubernetes.yaml
-```
+## Features and configuration
 
-### Terraform
+- Prometheus metrics, correlated logs, OTLP traces, Java/Go/Node profiles and Faro browser telemetry.
+- [Optional AI shopping assistant and Agent Observability](docs/optional-ai-chat.md).
+- [Verification and Cloud query checks](deploy/README.md#verification-and-limits).
+- [Maintainer tests and deliberate failure scenario](tests/local/README.md).
 
-The following options are available to deploy the application using Terraform:
+**Synthetic data only.** The demo uses in-memory storage and does not process real payments. Model calls require explicit configuration. Automation routing is plan-only; launch commands do not post tickets, page production teams, merge PRs or deploy fixes.
 
-| Name                                             | Description                                                                                                     |
-| ------------------------------------------------ | --------------------------------------------------------------------------------------------------------------- |
-| [Amazon EKS](./terraform/eks/default/)           | Deploys the application to Amazon EKS using other AWS services for dependencies, such as RDS, DynamoDB etc.     |
-| [Amazon EKS (Minimal)](./terraform/eks/minimal/) | Deploys the application to Amazon EKS using in-cluster dependencies instead of RDS, DynamoDB etc.               |
-| [Amazon ECS](./terraform/ecs/default/)           | Deploys the application to Amazon ECS using other AWS services for dependencies, such as RDS, DynamoDB etc.     |
-| [AWS App Runner](./terraform/apprunner/)         | Deploys the application to AWS App Runner using other AWS services for dependencies, such as RDS, DynamoDB etc. |
+Host/Docker/cluster administrators can access runtime credentials. Protect host swap/snapshots, and configure Kubernetes Secret encryption and access controls as described in the deployment guide.
 
-## Security
-
-See [CONTRIBUTING](CONTRIBUTING.md#security-issue-notifications) for more information.
-
-## License
-
-This project is licensed under the MIT-0 License.
-
-This package depends on and may incorporate or retrieve a number of third-party
-software packages (such as open source packages) at install-time or build-time
-or run-time ("External Dependencies"). The External Dependencies are subject to
-license terms that you must accept in order to use this package. If you do not
-accept all of the applicable license terms, you should not use this package. We
-recommend that you consult your company’s open source approval policy before
-proceeding.
-
-Provided below is a list of External Dependencies and the applicable license
-identification as indicated by the documentation associated with the External
-Dependencies as of Amazon's most recent review.
-
-THIS INFORMATION IS PROVIDED FOR CONVENIENCE ONLY. AMAZON DOES NOT PROMISE THAT
-THE LIST OR THE APPLICABLE TERMS AND CONDITIONS ARE COMPLETE, ACCURATE, OR
-UP-TO-DATE, AND AMAZON WILL HAVE NO LIABILITY FOR ANY INACCURACIES. YOU SHOULD
-CONSULT THE DOWNLOAD SITES FOR THE EXTERNAL DEPENDENCIES FOR THE MOST COMPLETE
-AND UP-TO-DATE LICENSING INFORMATION.
-
-YOUR USE OF THE EXTERNAL DEPENDENCIES IS AT YOUR SOLE RISK. IN NO EVENT WILL
-AMAZON BE LIABLE FOR ANY DAMAGES, INCLUDING WITHOUT LIMITATION ANY DIRECT,
-INDIRECT, CONSEQUENTIAL, SPECIAL, INCIDENTAL, OR PUNITIVE DAMAGES (INCLUDING
-FOR ANY LOSS OF GOODWILL, BUSINESS INTERRUPTION, LOST PROFITS OR DATA, OR
-COMPUTER FAILURE OR MALFUNCTION) ARISING FROM OR RELATING TO THE EXTERNAL
-DEPENDENCIES, HOWEVER CAUSED AND REGARDLESS OF THE THEORY OF LIABILITY, EVEN
-IF AMAZON HAS BEEN ADVISED OF THE POSSIBILITY OF SUCH DAMAGES. THESE LIMITATIONS
-AND DISCLAIMERS APPLY EXCEPT TO THE EXTENT PROHIBITED BY APPLICABLE LAW.
-
-MariaDB Community License - [LICENSE](https://mariadb.com/kb/en/mariadb-licenses/)
-MySQL Community Edition - [LICENSE](https://github.com/mysql/mysql-server/blob/8.0/LICENSE)
+Original [upstream documentation](README.upstream.md), attribution and [license](LICENSE) are retained.

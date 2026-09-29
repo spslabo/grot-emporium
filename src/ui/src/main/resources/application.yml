@@ -3,6 +3,11 @@ server:
   forward-headers-strategy: NATIVE
 
 spring:
+  # Model beans are explicitly configured by config/chat; do not auto-create
+  # an AWS client when the shopping assistant is disabled.
+  ai:
+    model:
+      chat: none
   messages:
     basename: lang/messages
   http:
@@ -13,59 +18,46 @@ retail:
   ui:
     theme: default
     disable-demo-warnings: false
-    product-images-path: # /mnt/products
+    product-images-path:
     endpoints:
-      catalog: # http://localhost:8081
-      carts: # http://localhost:8082
-      checkout: # http://localhost:8085
-      orders: # http://localhost:8083
-      recommendations: # http://localhost:8086
+      catalog:
+      carts:
+      checkout:
+      orders:
+      recommendations:
     search:
       enabled: false
     chat:
       enabled: false
       temperature: 0.6
       max-tokens: 300
-      provider: # mock
+      provider:
       model:
       prompt: |
-        You are A.G.E.N.T., a sarcastic AI assistant for a joke spy gadget e-commerce site. Your primary directive is to help customers while maintaining the persona of a slightly jaded secret agent who's seen it all.
-
-        When asked about the current web-site you will refer to "Demo Store", which sells products related to spy gadgets.
-
-        Core personality traits:
-
-        Dry wit and deadpan humor
-        Speaks in spy movie clichés, but then often points out how cliché they are
-        Occasionally references ridiculous past "missions" that clearly never happened
-        Treats everyday shopping questions like matters of national security
-        Uses unnecessarily complex spy terminology for simple things
-        Maintains plausible deniability about everything being a joke
-        Response style:
-
-        Keep responses concise and sharp-witted
-        Use spy-themed puns when appropriate
-        Refer to customers as "Agent [First Name]" or "Operative"
-        Treat shopping cart as "mission inventory"
-        Call products "gadgets" or "classified tech"
-        Refer to shipping as "deployment"
-        Call order tracking "surveillance"
-        Important:
-
-        Never break character
-        Always be helpful despite the sarcasm
-        Keep product information accurate
-        Maintain appropriate boundaries
-        Don't overdo the spy references to the point of confusion
-        Remember you're selling joke products, not actual spy gear
-        Sample response style: "Ah, Agent Sarah, requesting intel on our Invisible Ink Pen, are we? adjusts sunglasses dramatically While I could tell you about its capabilities, I'm afraid I'd have to redact most of it. But between you and me, it's basically a $5 pen with lemon juice. But don't let that leave this secure channel. Shipping takes 3-5 days, or as we say in the business, 'approximately 72-120 hours of covert transport operations.'"
-
-        Remember: You're here to assist while entertaining, with sarcasm that amuses but never mocks the customer.
+        You are the helpful shopping assistant for Grot Emporium, a demonstration
+        store selling orange Grafana Grot silicone squishies, not foam toys or cards.
+        Our collection is Original, On-Call, Cloud, Firefighter, Space, Zen, Disco,
+        Golden, and Super Rare Sparkly Grot. Grot always keeps its original orange
+        color; only accessories vary. Be warm, concise, and playful.
+        This is a demo: no real purchases, payments, deliveries, or stock promises.
+        Do not invent prices, stock levels, product safety claims, or order details.
+        If information is not available, say so. Never ask for passwords, payment
+        card details, private credentials, or other sensitive information.
       bedrock:
         region:
       openai:
         base-url: http://localhost:8000
         api-key:
+
+grot:
+  agent-observability:
+    enabled: ${GROT_AGENT_OBSERVABILITY_ENABLED:false}
+  faro:
+    enabled: ${FARO_ENABLED:false}
+    url: ${FARO_COLLECTOR_URL:}
+    public-url-acknowledged: ${FARO_PUBLIC_URL_ACKNOWLEDGED:false}
+    environment: ${DEPLOYMENT_ENVIRONMENT:demo}
+    version: ${SERVICE_VERSION:local}
 
 management:
   endpoints:
@@ -73,4 +65,12 @@ management:
       exposure:
         include: info,health,metrics,prometheus
 
-otel.sdk.disabled: true
+# Enable explicitly in deployment; keep unconfigured development offline.
+# Bounded histogram buckets for Prometheus latency/SLO queries.
+management.metrics.distribution.slo.http.server.requests: 5ms,10ms,25ms,50ms,100ms,250ms,500ms,1s,2s,5s,10s
+
+otel.sdk.disabled: ${OTEL_SDK_DISABLED:true}
+logging:
+  structured:
+    format:
+      console: logstash
