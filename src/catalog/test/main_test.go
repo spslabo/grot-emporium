@@ -20,8 +20,8 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"fmt"
 	"log"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -42,9 +42,16 @@ var dbConfig config.DatabaseConfiguration
 
 func TestMain(m *testing.M) {
 	ctx := context.Background()
-	container, port, _ := prepareContainer(ctx)
-
-	endpoint := fmt.Sprintf("localhost:%s", port)
+	container, port, err := prepareContainer(ctx)
+	if err != nil {
+		log.Fatalf("Start test database: %v", err)
+	}
+	host, err := container.Host(ctx)
+	if err != nil {
+		container.Terminate(ctx)
+		log.Fatalf("Resolve test database host: %v", err)
+	}
+	endpoint := net.JoinHostPort(host, port)
 
 	dbConfig = config.DatabaseConfiguration{
 		Type:           "mysql",

@@ -1,5 +1,5 @@
 import { ROOT_CONTEXT, trace, Span } from '@opentelemetry/api';
-import { BasicTracerProvider, AlwaysOffSampler } from '@opentelemetry/sdk-trace-base';
+import { BasicTracerProvider, AlwaysOffSampler, ReadableSpan } from '@opentelemetry/sdk-trace-base';
 import { SpanProfiling } from './span-profiling';
 
 const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
@@ -60,11 +60,11 @@ describe('span sample attribution', () => {
     const tracer = provider.getTracer('test');
     const root = tracer.startSpan('request', {}, ROOT_CONTEXT);
     const child = tracer.startSpan('child', {}, trace.setSpan(ROOT_CONTEXT, root));
-    expect((root as any).attributes['pyroscope.profile.id']).toBe(root.spanContext().spanId);
-    expect((child as any).attributes['pyroscope.profile.id']).toBeUndefined();
+    expect((root as unknown as ReadableSpan).attributes['pyroscope.profile.id']).toBe(root.spanContext().spanId);
+    expect((child as unknown as ReadableSpan).attributes['pyroscope.profile.id']).toBeUndefined();
     profiling.setWriter(undefined);
     const disabled = tracer.startSpan('disabled', {}, ROOT_CONTEXT);
-    expect((disabled as any).attributes['pyroscope.profile.id']).toBeUndefined();
+    expect((disabled as unknown as ReadableSpan).attributes['pyroscope.profile.id']).toBeUndefined();
     root.end(); child.end(); disabled.end();
   });
 });
