@@ -327,16 +327,21 @@ def docker(args):
     save(state_path, json.dumps(dict(port=args.port, syslog_port=args.syslog_port,
         collector_port=args.collector_port, fingerprint=fingerprint(roles), faro=bool(roles['gateway']['GRAFANA_FARO_URL']))))
     try:
+        activity_control(args, cleanup=True)
         stage_runtime(command, env, args.destination, roles)
         # Receiver must be ready before Docker initializes application syslog drivers.
         for services in (['cadvisor', 'node-exporter'], ['alloy'], ['postgres'], ['catalog', 'cart', 'orders', 'checkout', 'ui'], ['gateway']):
             run(command + ['up', '-d', '--no-deps', '--force-recreate', '--wait', '--wait-timeout', '180'] + services, env=env)
+        activity_control(args)
     except BaseException:
         # A failed/aborted launch must not strand staged credentials. Retain only the bound telemetry WAL.
         try:
-            run(command + ['down'], env=env)
+            activity_control(args, cleanup=True)
         finally:
-            remove_runtime_volumes(args.destination)
+            try:
+                run(command + ['down'], env=env)
+            finally:
+                remove_runtime_volumes(args.destination)
         raise
     print(f'Storefront ready at http://localhost:{args.port}. Delivery is not yet verified: ./grot verify {args.destination}')
 
@@ -350,6 +355,7 @@ def stop(args):
         if not ledger or ledger.get('data', {}).get('destination') != args.destination or not owned(ledger, ledger['data'].get('owner')):
             raise SafeError('No matching launcher ownership record; refusing cleanup')
         traffic_control(args, cleanup=True)
+        activity_control(args, cleanup=True)
         releases = helm_releases(helm)
         names = [r['name'] for r in releases if r['name'] in ('grot', 'grot-telemetry')]
         if names: run(helm + ['uninstall'] + names + ['--cascade', 'foreground', '--wait', '--timeout', '180s'])
@@ -364,6 +370,7 @@ def stop(args):
     state = json.loads((path / 'run.json').read_text())
     command, env = compose(path, args, state)
     traffic_control(args, cleanup=True)
+    activity_control(args, cleanup=True)
     run(command + ['down'], env=env)
     remove_runtime_volumes(args.destination, include_data=True)
     (path / 'run.json').unlink()
@@ -660,6 +667,14 @@ def configure_agent(args):
     return grot_agent.configure(args, sys.modules[__name__])
 
 
+def activity_control(args, cleanup=False):
+    try:
+        from . import grot_activity
+    except ImportError:
+        import grot_activity
+    return (grot_activity.stop if cleanup else grot_activity.configure)(args, sys.modules[__name__])
+
+
 def traffic_control(args, cleanup=False):
     try:
         from . import grot_traffic
@@ -772,6 +787,7 @@ def k8s(args):
         retry = shlex.join(['./grot', 'verify', args.destination, '--context', args.context, '--namespace', args.namespace])
         detail = str(error) if isinstance(error, SafeError) else 'Check probe readiness and cluster connectivity; private output suppressed.'
         raise SafeError(f'Deployed, but verification failed. Browser access was not started. {detail}\nRetry: {retry}') from None
+    activity_control(args)
     if sys.stdin.isatty() and not args.settings_stdin and not getattr(args, 'no_open', False):
         print('[8/8] Starting port-forward; summary and browser will follow when reachable...', flush=True)
         open_app(args, verified=True)
@@ -813,6 +829,8 @@ def main():
     install.add_argument('--skip-k8s-monitoring', action='store_true', help='Reuse existing cluster monitoring; do not install or modify infrastructure collection')
     install.add_argument('--no-open', action='store_true', help='Skip automatic browser/tunnel startup after interactive deployment')
     install.add_argument('--port', type=int, default=8080, help='Local browser port (default: 8080)')
+    for target in (start, install):
+        target.add_argument('--no-demo-traffic', action='store_true', help='Disable automatic shopping/browser demo activity; no effect on optional load tests')
     access = sub.add_parser('open', help='Open an existing Kubernetes deployment in your browser; Ctrl+C closes only the tunnel')
     access.add_argument('destination'); access.add_argument('--context', required=True)
     access.add_argument('--namespace', help='Defaults to grot-<destination>')
@@ -822,7 +840,7 @@ def main():
     infra.add_argument('--namespace', help='Source app namespace; defaults to grot-<destination>')
     infra.add_argument('--remove', action='store_true', help='Explicitly remove Grot-owned shared infrastructure monitoring, not the app')
     infra.add_argument('--grafana-context', help='Also verify indexed infrastructure metrics/events through this explicit gcx context')
-    traffic = sub.add_parser('traffic', help='Bounded sustained k6 shopping + browser traffic; low by default')
+    traffic = sub.add_parser('traffic', help='Optional load tests; normal demo activity starts automatically')
     traffic.add_argument('destination')
     traffic.add_argument('action', choices=['start', 'status', 'stop'])
     traffic.add_argument('--context'); traffic.add_argument('--namespace')

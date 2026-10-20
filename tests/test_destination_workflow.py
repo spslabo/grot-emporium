@@ -232,6 +232,22 @@ class DestinationWorkflowTests(unittest.TestCase):
         self.assertFalse(any(obj['kind'] == 'Secret' for obj in written))
         self.assertEqual([], list(self.root.iterdir()))
 
+    def test_demo_activity_starts_after_verification_by_default(self):
+        cluster = FakeCluster()
+        def verify(*args, **kwargs):
+            self.assertNotIn(('deployment', 'grot-demo-activity'), cluster.objects)
+        with patch.object(grot, 'run', side_effect=cluster), patch.object(grot, 'settings', return_value=self.roles), patch.object(grot, 'verify_k8s', side_effect=verify), contextlib.redirect_stdout(io.StringIO()):
+            grot.k8s(self.args)
+        self.assertIn(('deployment', 'grot-demo-activity'), cluster.objects)
+
+    def test_quiet_deployment_does_not_create_demo_activity(self):
+        cluster = FakeCluster()
+        self.args.no_demo_traffic = True
+        with patch.object(grot, 'run', side_effect=cluster), patch.object(grot, 'settings', return_value=self.roles), contextlib.redirect_stdout(io.StringIO()):
+            grot.k8s(self.args)
+        self.assertNotIn(('deployment', 'grot-demo-activity'), cluster.objects)
+        self.assertNotIn(('configmap', 'grot-demo-activity'), cluster.objects)
+
     def test_quick_retarget_is_rejected_before_secret_updates(self):
         cluster = FakeCluster()
         with patch.object(grot, 'run', side_effect=cluster), patch.object(grot, 'settings', return_value=self.roles), contextlib.redirect_stdout(io.StringIO()):
@@ -248,7 +264,9 @@ class DestinationWorkflowTests(unittest.TestCase):
             cluster.objects[('secret', 'grot-ui-runtime')]['metadata']['labels'] = {}
             cluster.calls.clear(); grot.stop(self.args)
         deleted = [command[command.index('--raw')+1] for command, _ in cluster.calls if '--raw' in command]
-        self.assertEqual(5, len(deleted))  # Four owned Secrets + ownership ledger.
+        self.assertEqual(7, len(deleted))  # Four owned Secrets, ledger, activity Deployment + ConfigMap.
+        self.assertIn('/apis/apps/v1/namespaces/grot-team-a/deployments/grot-demo-activity', deleted)
+        self.assertIn('/api/v1/namespaces/grot-team-a/configmaps/grot-demo-activity', deleted)
         self.assertFalse(any('grot-ui-runtime' in path for path in deleted))
         for command, kwargs in cluster.calls:
             if '--raw' in command: self.assertIn('resourceVersion', json.loads(kwargs['data'])['preconditions'])

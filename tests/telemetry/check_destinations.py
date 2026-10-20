@@ -8,9 +8,10 @@ from pathlib import Path
 import subprocess
 import sys
 import tempfile
+import time
 from unittest.mock import patch
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
-from scripts import grot, grot_traffic
+from scripts import grot, grot_traffic, grot_activity
 from prepare_destinations import certificate, mock_settings
 
 with tempfile.TemporaryDirectory(prefix='grot-runtime-test-') as directory:
@@ -34,6 +35,18 @@ with tempfile.TemporaryDirectory(prefix='grot-runtime-test-') as directory:
                 sensitive = ['dummy-not-a-real-token', *inputs['database'].values()]
                 with patch.object(sys, 'stdin', io.StringIO(json.dumps(inputs))):
                     grot.docker(args)
+                automatic = grot_activity.docker_object(args, grot)
+                assert automatic['State']['Status'] == 'running'
+                assert automatic['HostConfig']['RestartPolicy']['Name'] == 'unless-stopped'
+                assert all(value not in json.dumps(automatic['Config']) for value in sensitive)
+                monitor = command + ['exec', '-T', 'postgres', 'sh', '-c',
+                    '. /run/grot/database/values.sh; export PGPASSWORD="$GROT_DB_MONITOR_PASSWORD"; exec psql -h 127.0.0.1 -U db-o11y -d orders -At -v ON_ERROR_STOP=1']
+                deadline = time.monotonic() + 60
+                while time.monotonic() < deadline:
+                    if int(grot.run(monitor, env=env, data='SELECT count(*) FROM orders;')) > 0: break
+                    time.sleep(2)
+                else: raise AssertionError('Automatic demo activity did not create an order')
+                print('Automatic demo activity created orders without a post-deployment traffic command.', flush=True)
                 grot.verify(args)
                 traffic_args = argparse.Namespace(**vars(args), action='start', local_only=True, preset='low', duration='30s', rate=None, browser_rate=None)
                 grot.traffic_control(traffic_args)
@@ -46,8 +59,6 @@ with tempfile.TemporaryDirectory(prefix='grot-runtime-test-') as directory:
                 assert all(value not in traffic_logs for value in sensitive)
                 print('Sustained shopping + browser traffic passed; k6 thresholds passed.', flush=True)
                 # Real application writes, and a monitor that can read but not mutate data.
-                monitor = command + ['exec', '-T', 'postgres', 'sh', '-c',
-                    '. /run/grot/database/values.sh; export PGPASSWORD="$GROT_DB_MONITOR_PASSWORD"; exec psql -h 127.0.0.1 -U db-o11y -d orders -At -v ON_ERROR_STOP=1']
                 assert int(grot.run(monitor, env=env, data='SELECT count(*) FROM orders;')) > 0
                 assert grot.run(monitor, env=env, data="SELECT rolsuper FROM pg_roles WHERE rolname=current_user;").strip() == 'f'
                 assert grot.run(monitor, env=env, data="SELECT has_table_privilege(current_user, 'orders', 'INSERT,UPDATE,DELETE,TRUNCATE');").strip() == 'f'
@@ -85,6 +96,7 @@ with tempfile.TemporaryDirectory(prefix='grot-runtime-test-') as directory:
                 if state.exists(): grot.stop(args)
                 grot.run(command + ['down', '--volumes'], env=env)
             assert not grot_traffic.docker_object(args, grot), 'Traffic runner survived app teardown'
+            assert not grot_activity.docker_object(args, grot), 'Automatic activity survived app teardown'
             assert not (grot.profile_path(alias) / 'run.json').exists()
             for volume in list(grot.runtime_volumes(alias).values()) + [f'grot-{alias}_alloy-data']:
                 assert volume not in grot.run(['docker', 'volume', 'ls', '--format', '{{.Name}}']).splitlines()
