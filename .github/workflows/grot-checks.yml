@@ -15,8 +15,9 @@ jobs:
       - uses: azure/setup-helm@v4.3.1
       - run: pip install -r tests/requirements.txt
       - run: python -m unittest discover -s tests -p 'test_*.py'
+      - run: python scripts/sync_grot_alloy.py --check
       - run: |
-          for script in tests/k6/shopping.js tests/k6/browser.js; do
+          for script in tests/k6/shopping.js tests/k6/browser.js tests/k6/traffic.js; do
             docker run --rm -v "$PWD:/work:ro" -w /work grafana/k6:2.3.0 inspect \
               -e BASE_URL=http://localhost:8080 -e TARGET_AUTHORIZED=true "$script"
           done
@@ -64,7 +65,7 @@ jobs:
         with:
           go-version-file: src/catalog/go.mod
           cache-dependency-path: src/catalog/go.sum
-      - run: go test . -count=1
+      - run: go test -race . ./middleware -count=1
         working-directory: src/catalog
   checkout:
     runs-on: ubuntu-latest

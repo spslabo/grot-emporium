@@ -1,3 +1,7 @@
+grotDatabase:
+  enabled: false
+  image: postgres:17.11-alpine
+
 cart:
   fullnameOverride: carts
 

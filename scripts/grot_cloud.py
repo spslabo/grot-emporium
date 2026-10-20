@@ -76,6 +76,14 @@ def verify(args, run, error):
 
     check('metrics', 'all five services', ['metrics', 'query', '-d', selected['metrics'],
         'count by(service_name) (up' + selector + ' == 1)'], lambda d: SERVICES <= positive_services(d))
+    db_selector = '{job="integrations/db-o11y",cluster=' + json.dumps(cluster) + '}'
+    for label, expression in [('database health', 'pg_up'), ('database queries', 'pg_stat_statements_calls_total')]:
+        check(label, 'grot-postgres', ['metrics', 'query', '-d', selected['metrics'],
+            'sum by(service_name) (' + expression + db_selector + ')'],
+            lambda d: 'grot-postgres' in positive_services(d))
+    check('database query details', 'grot-postgres', ['logs', 'query', '-d', selected['logs'],
+        'sum by(service_name) (count_over_time(' + db_selector + ' |= "query_association" [15m]))', '--since', '15m'],
+        lambda d: 'grot-postgres' in positive_services(d))
     def log_coverage(response):
         found = SERVICES & positive_services(response)
         if found:
@@ -103,4 +111,4 @@ def verify(args, run, error):
             lambda d: float(d.get('flamegraph', {}).get('total', 0)) > 0)
     if failed:
         raise error('Cloud indexing check incomplete: ' + '; '.join(failed) + '. See the per-signal results above.')
-    print('Cloud indexing confirmed for metrics, logs, traces and profiles. This checks recent presence, not exact probe correlation, Faro indexing or App O11y readiness.', flush=True)
+    print('Cloud indexing confirmed for metrics, logs, traces, profiles and PostgreSQL health/query telemetry. This checks recent presence, not exact probe correlation, Faro indexing or App O11y readiness.', flush=True)

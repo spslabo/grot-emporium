@@ -85,6 +85,87 @@ pyroscope.write "destination" {
   }
 }
 
+// Real Database Observability, not only the PostgreSQL infrastructure integration.
+// Only the non-superuser monitoring credential enters Alloy. URL-safe secrets
+// are validated by the launcher. Internal demo networking only (no published DB port).
+prometheus.exporter.postgres "orders" {
+  data_source_names = ["postgresql://db-o11y:" + sys.env("GROT_DB_MONITOR_PASSWORD") + "@postgres:5432/orders?sslmode=disable"]
+  enabled_collectors = ["database", "locks", "stat_database", "stat_bgwriter", "stat_user_tables", "statio_user_tables", "stat_statements"]
+  stat_statements {
+    exclude_users = ["db-o11y", "postgres"]
+  }
+}
+database_observability.postgres "orders" {
+  data_source_name = "postgresql://db-o11y:" + sys.env("GROT_DB_MONITOR_PASSWORD") + "@postgres:5432/orders?sslmode=disable"
+  targets = prometheus.exporter.postgres.orders.targets
+  forward_to = [loki.relabel.database.receiver]
+  enable_collectors = ["query_details", "query_samples", "schema_details", "explain_plans"]
+  exclude_databases = ["postgres", "template0", "template1"]
+  query_samples {
+    disable_query_redaction = false
+  }
+}
+loki.relabel "database" {
+  forward_to = [loki.write.destination.receiver]
+  rule {
+    target_label = "job"
+    replacement = "integrations/db-o11y"
+  }
+  rule {
+    target_label = "instance"
+    replacement = sys.env("GROT_CLUSTER") + "/grot-postgres"
+  }
+  rule {
+    target_label = "cluster"
+    replacement = sys.env("GROT_CLUSTER")
+  }
+  rule {
+    target_label = "service_name"
+    replacement = "grot-postgres"
+  }
+  rule {
+    target_label = "deployment_environment"
+    replacement = sys.env("DEPLOYMENT_ENVIRONMENT")
+  }
+}
+discovery.relabel "database" {
+  targets = database_observability.postgres.orders.targets
+  rule {
+    target_label = "job"
+    replacement = "integrations/db-o11y"
+  }
+  rule {
+    target_label = "instance"
+    replacement = sys.env("GROT_CLUSTER") + "/grot-postgres"
+  }
+  rule {
+    target_label = "cluster"
+    replacement = sys.env("GROT_CLUSTER")
+  }
+  rule {
+    target_label = "service_name"
+    replacement = "grot-postgres"
+  }
+  rule {
+    target_label = "deployment_environment"
+    replacement = sys.env("DEPLOYMENT_ENVIRONMENT")
+  }
+}
+prometheus.scrape "database" {
+  targets = discovery.relabel.database.output
+  scrape_interval = "15s"
+  forward_to = [prometheus.remote_write.destination.receiver]
+}
+// Only PostgreSQL lines go to the DB error collector. Original server logs
+// also flow through the existing application log pipeline.
+loki.process "database_logs" {
+  stage.match {
+    selector = "{service_name!=\"grot-postgres\"}"
+    action = "drop"
+  }
+  forward_to = [database_observability.postgres.orders.logs_receiver]
+}
+
 prometheus.scrape "grot" {
   scrape_interval = "15s"
   targets = [
@@ -121,7 +202,7 @@ loki.relabel "syslog" {
   forward_to = []
   rule {
     source_labels = ["__syslog_message_app_name"]
-    regex = "grot-(ui|cart|orders|catalog|checkout)"
+    regex = "grot-(ui|cart|orders|catalog|checkout|postgres)"
     action = "keep"
   }
   rule {
@@ -141,5 +222,44 @@ loki.source.syslog "grot" {
     }
   }
   relabel_rules = loki.relabel.syslog.rules
-  forward_to = [loki.write.destination.receiver]
+  forward_to = [loki.write.destination.receiver, loki.process.database_logs.receiver]
+}
+
+// cAdvisor runs separately with host mounts; only this Compose project's
+// container series are forwarded. No extra ingestion credentials.
+prometheus.scrape "docker_containers" {
+  targets = [{
+    "__address__" = "cadvisor:8080",
+    "job" = "integrations/cadvisor",
+    "instance" = sys.env("GROT_CLUSTER") + "/docker",
+    "cluster" = sys.env("GROT_CLUSTER"),
+  }]
+  scrape_interval = "15s"
+  forward_to = [prometheus.relabel.docker_containers.receiver]
+}
+prometheus.relabel "docker_containers" {
+  forward_to = [prometheus.remote_write.destination.receiver]
+  rule {
+    source_labels = ["__name__", "container_label_com_docker_compose_project"]
+    regex = "(up|scrape_.*);.*|container_.*;" + sys.env("GROT_DOCKER_PROJECT")
+    action = "keep"
+  }
+  rule {
+    source_labels = ["container_label_com_docker_compose_service"]
+    regex = "(.+)"
+    target_label = "service_name"
+    replacement = "grot-$1"
+  }
+}
+// CPU/memory/disk/filesystem metrics from the Linux Docker host. On Docker
+// Desktop this is the Docker Linux VM, not macOS/Windows.
+prometheus.scrape "docker_host" {
+  targets = [{
+    "__address__" = "node-exporter:9100",
+    "job" = "integrations/node_exporter",
+    "instance" = sys.env("GROT_CLUSTER") + "/host",
+    "cluster" = sys.env("GROT_CLUSTER"),
+  }]
+  scrape_interval = "15s"
+  forward_to = [prometheus.remote_write.destination.receiver]
 }

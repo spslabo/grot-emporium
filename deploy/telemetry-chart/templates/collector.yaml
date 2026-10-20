@@ -64,6 +64,9 @@ spec:
             - secretRef:
                 name: {{ required "collectorSecret is required" .Values.collectorSecret }}
           env:
+            - name: GROT_DB_MONITOR_PASSWORD
+              valueFrom:
+                secretKeyRef: { name: grot-database-runtime, key: GROT_DB_MONITOR_PASSWORD }
             - name: GROT_NAMESPACE
               valueFrom:
                 fieldRef: { fieldPath: metadata.namespace }

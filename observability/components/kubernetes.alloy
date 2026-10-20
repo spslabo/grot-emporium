@@ -82,5 +82,5 @@ discovery.relabel "logs" {
 }
 loki.source.kubernetes "grot" {
   targets = discovery.relabel.logs.output
-  forward_to = [loki.write.destination.receiver]
+  forward_to = [loki.write.destination.receiver, loki.process.database_logs.receiver]
 }

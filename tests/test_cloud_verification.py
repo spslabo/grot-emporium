@@ -21,7 +21,7 @@ class CloudVerificationTests(unittest.TestCase):
         if 'series' in command:
             return json.dumps({'labelsSet': [{'labels': [{'name': 'service_name', 'value': s}, {'name': '__profile_type__', 'value': 'wall:wall:nanoseconds:wall:nanoseconds'}]} for s in grot_cloud.SERVICES]})
         if 'metrics' in command or 'logs' in command:
-            names = [] if 'logs' in command and self.missing_logs else grot_cloud.SERVICES
+            names = [] if 'logs' in command and self.missing_logs else ({'grot-postgres'} if 'integrations/db-o11y' in ' '.join(command) else grot_cloud.SERVICES)
             return json.dumps({'data': {'result': [{'metric': {'service_name': s}, 'value': [100, '1']} for s in names]}})
         if 'traces' in command: return '{"traces":[{"traceID":"synthetic"}]}'
         if 'profiles' in command: return '{"flamegraph":{"total":"12"}}'
@@ -55,7 +55,7 @@ class CloudVerificationTests(unittest.TestCase):
 
     def test_quiet_services_are_reported_without_failing_working_log_ingestion(self):
         def execute(command):
-            if 'logs' in command:
+            if 'logs' in command and 'integrations/db-o11y' not in ' '.join(command):
                 return '{"data":{"result":[{"stream":{"service_name":"grot-catalog"},"values":[{"timestamp":"123","line":"3"}]}]}}'
             return self.execute(command)
         with contextlib.redirect_stdout(io.StringIO()) as output:

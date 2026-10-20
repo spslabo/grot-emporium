@@ -3,6 +3,9 @@
 global:
   grotBackendSecret: ""
 
+grotDatabase:
+  enabled: true
+
 grotTelemetry:
   enabled: false
   environment: demo
@@ -74,6 +77,13 @@ orders:
   extraEnvFrom: *shared
   extraEnv:
     - { name: OTEL_SERVICE_NAME, value: grot-orders }
+    - { name: RETAIL_ORDERS_PERSISTENCE_PROVIDER, value: postgres }
+    - { name: RETAIL_ORDERS_PERSISTENCE_ENDPOINT, value: "postgres:5432" }
+    - { name: RETAIL_ORDERS_PERSISTENCE_NAME, value: orders }
+    - { name: RETAIL_ORDERS_PERSISTENCE_USERNAME, value: grot_orders }
+    - name: RETAIL_ORDERS_PERSISTENCE_PASSWORD
+      valueFrom:
+        secretKeyRef: { name: grot-database-runtime, key: GROT_DB_APP_PASSWORD }
     - *poduid
     - *resource
     - *version

@@ -15,8 +15,65 @@ x-logging: &logging
     mode: non-blocking
     max-buffer-size: 4m
 services:
+  cadvisor:
+    image: ghcr.io/google/cadvisor:0.60.6
+    # Host-level access is necessary for container/cgroup accounting. No published port.
+    privileged: true
+    cgroup: host
+    command:
+      - --docker_only=true
+      - --containerd=${GROT_CONTAINERD_SOCKET:-/rootfs/run/containerd/containerd.sock}
+      - --housekeeping_interval=15s
+      - --store_container_labels=false
+      - --whitelisted_container_labels=com.docker.compose.project,com.docker.compose.service
+    volumes:
+      - /:/rootfs:ro
+      - /var/run:/var/run:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - /sys:/sys:ro
+      - /var/lib/docker:/var/lib/docker:ro
+    healthcheck:
+      test: [CMD, wget, -q, -O, /dev/null, http://127.0.0.1:8080/healthz]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+  node-exporter:
+    image: quay.io/prometheus/node-exporter:v1.10.2
+    pid: host
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    command:
+      - --path.rootfs=/host
+      - --path.procfs=/host/proc
+      - --path.sysfs=/host/sys
+      - --collector.disable-defaults
+      - --collector.cpu
+      - --collector.meminfo
+      - --collector.filesystem
+      - --collector.diskstats
+      - --collector.loadavg
+      - --collector.uname
+      - --collector.stat
+      - --collector.time
+      - --collector.os
+    volumes:
+      - /:/host:ro
+    healthcheck:
+      test: [CMD, wget, -q, -O, /dev/null, http://127.0.0.1:9100/metrics]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+  postgres:
+    logging:
+      <<: *logging
+      options: { <<: *log-options, tag: grot-postgres }
+    depends_on:
+      alloy: { condition: service_healthy }
   alloy:
     image: grafana/alloy:v1.20.0
+    environment:
+      GROT_DOCKER_PROJECT: ${GROT_DOCKER_PROJECT:?Use the grot launcher}
     command: ["run", "--disable-reporting", "--server.http.listen-addr=0.0.0.0:12345", "--storage.path=/var/lib/alloy", "/etc/alloy/config.alloy"]
     env_file:
       - path: ${GROT_ALLOY_ENV_FILE:?Select a private destination}

@@ -8,7 +8,7 @@ from pathlib import Path
 from unittest.mock import patch
 ROOT=Path(__file__).resolve().parents[2]
 sys.path[:0]=[str(ROOT),str(ROOT/'tests/telemetry')]
-from scripts import grot
+from scripts import grot, grot_infrastructure
 from prepare_destinations import certificate, mock_settings
 work=Path(os.environ['GROT_K3S_TEST_DIR'])
 cluster=os.environ['GROT_K3S_TEST_CLUSTER']
@@ -23,6 +23,10 @@ test_images={role:'grot-test/'+role+':'+cluster for role in ('alloy','gateway')}
 def run(command, **kwargs):
     if command[0]=='helm' and 'upgrade' in command and 'grot-telemetry' in command:
         command=command+['--set-string','collectorImage='+test_images['alloy'],'--set-string','gatewayImage='+test_images['gateway']]
+    if command[0]=='helm' and 'upgrade' in command and grot_infrastructure.RELEASE in command:
+        command=command+['--set-string','collectors.infrastructure.image.registry=docker.io',
+            '--set-string','collectors.infrastructure.image.repository=grot-test/alloy',
+            '--set-string','collectors.infrastructure.image.tag='+cluster]
     return original(command, **kwargs)
 
 def create(obj, ns='grot-target', manager='grot-acceptance'):
@@ -54,6 +58,7 @@ def snapshot(a):
 
 def assert_signals(name, rotated=False):
     expected=[name+(':rotated' if rotated else '')+':'+signal for signal in ('metrics','logs','traces','profiles')]
+    expected += [name+':'+signal for signal in ('db-health', 'db-query-metrics', 'db-query-details', 'infra-containers', 'infra-host', 'infra-kube-state', 'infra-events')]
     expected += [name+':faro'] + [name+':profile:'+service for service in ('ui','cart','orders','catalog','checkout')]
     # A receiver-level profile ACK can precede the Node profiler's first upload.
     deadline=time.monotonic()+120
@@ -63,7 +68,10 @@ def assert_signals(name, rotated=False):
         assert time.monotonic()<deadline, 'Missing destination acknowledgements: '+str([key for key in expected if not values.get(key,0)])
         time.sleep(3)
     assert not values.get('credential_leak',0)
-    print(name+': all five signals, profiles from all five services'+(' with rotated auth' if rotated else ''),flush=True)
+    print(name+': app signals + cAdvisor/container metrics + node metrics + kube-state-metrics + Kubernetes events'+(' with rotated auth' if rotated else ''),flush=True)
+    history=run(['helm','--kube-context',context,'-n',grot_infrastructure.NAMESPACE,'get','values',grot_infrastructure.RELEASE,'-o','json'])
+    assert 'dummy-not-a-real-token' not in history and 'dummy-rotated-not-a-real-token' not in history
+    assert 'https://'+host not in history, 'Private destination in Helm values'
 
 if not (work/'prepared').exists():
     certificate(work,('sink',host))
@@ -82,7 +90,7 @@ if not (work/'prepared').exists():
         run(['docker','exec','k3d-'+cluster+'-server-0','crictl','pull',image])
     run(kube+['create','namespace','grot-target'])
     secret('sink-tls',{key:(work/key).read_text() for key in ('cert.pem','key.pem')},'grot-target')
-    create({'apiVersion':'v1','kind':'ConfigMap','metadata':{'name':'sink-code'},'data':{'sink.py':(ROOT/'tests/telemetry/destination_sink.py').read_text()}})
+    create({'apiVersion':'v1','kind':'ConfigMap','metadata':{'name':'sink-code'},'data':{'sink.py':(ROOT/'tests/telemetry/destination_sink.py').read_text(), 'snappy_block.py':(ROOT/'tests/telemetry/snappy_block.py').read_text()}})
     create({'apiVersion':'apps/v1','kind':'Deployment','metadata':{'name':'sink'},'spec':{'replicas':1,'selector':{'matchLabels':{'app':'sink'}},'template':{'metadata':{'labels':{'app':'sink'}},'spec':{'automountServiceAccountToken':False,'containers':[{'name':'sink','image':'python:3.12-alpine','command':['python','/code/sink.py'],'ports':[{'containerPort':18766}],'volumeMounts':[{'name':'code','mountPath':'/code','readOnly':True},{'name':'tls','mountPath':'/certs','readOnly':True}]}],'volumes':[{'name':'code','configMap':{'name':'sink-code'}},{'name':'tls','secret':{'secretName':'sink-tls'}}]}}}})
     create({'apiVersion':'v1','kind':'Service','metadata':{'name':'sink'},'spec':{'selector':{'app':'sink'},'ports':[{'port':18766,'targetPort':18766}]}})
     run(kube+['-n','grot-target','rollout','status','deployment/sink','--timeout=90s'])
@@ -112,6 +120,10 @@ with patch.object(grot,'run',side_effect=run), patch.object(grot,'CONFIG_ROOT',w
     assert not grot.get_object(kube+['-n',a.namespace],'configmap',grot.LEDGER)
     print('Quick cleanup preserved adopted external Secret and removed owned ones',flush=True)
     assert not json.loads(run(kube+['-n',a.namespace,'get','pods','-o','json']))['items'], 'Cleanup returned while pods still existed'
+    # App teardown leaves shared monitoring intact; remove it explicitly before changing tenants.
+    assert grot.get_object(kube+['-n',grot_infrastructure.NAMESPACE], 'configmap', grot_infrastructure.LEDGER)
+    grot_infrastructure.remove(a, grot)
+    time.sleep(5)
     alpha_counts={key:value for key,value in stats().items() if key.startswith('alpha:')}
     b=args('k3s-long','long-term')
     run(kube+['create','namespace',b.namespace])
@@ -124,9 +136,11 @@ with patch.object(grot,'run',side_effect=run), patch.object(grot,'CONFIG_ROOT',w
     # k3s enforces the namespace-local collector ingress policy.
     probe="import socket,errno\naddr=socket.gethostbyname('alloy.grot-k3s-long.svc.cluster.local')\ntry:\n socket.create_connection((addr,4318),2)\nexcept OSError as e:\n assert isinstance(e,TimeoutError) or e.errno in (errno.ECONNREFUSED,errno.EHOSTUNREACH,errno.ENETUNREACH)\nelse:\n raise AssertionError('Collector accepted traffic from another namespace')"
     run(kube+['-n','grot-target','exec','deployment/sink','--','python','-c',probe])
-    print('Namespace ingress isolation and no cross-destination delivery verified',flush=True)
+    run(kube+['-n','grot-target','exec','deployment/sink','--','python','-c',probe.replace('alloy.grot-k3s-long', 'postgres.grot-k3s-long').replace('4318', '5432')])
+    print('Collector/database namespace ingress isolation and no cross-destination delivery verified',flush=True)
     grot.stop(b); assert snapshot(b)==external_before
-    print('Long-term install and cleanup left all four external Secrets unchanged',flush=True)
+    print('Long-term install and cleanup left all five external Secrets unchanged',flush=True)
+    grot_infrastructure.remove(b, grot)
     c=args('k3s-failure')
     def fail(command,**kwargs):
         if command[0]=='helm' and 'upgrade' in command and '--install' in command: raise grot.SafeError('injected failure after Secret creation')

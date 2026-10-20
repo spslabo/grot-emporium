@@ -10,7 +10,7 @@ bash tests/telemetry/check-destinations.sh
 ```
 
 - `check.sh` builds five services with in-memory storage and a local trace collector. It checks shopping/browser journeys, trace parenting, latency histograms and metric-label cardinality. `SKIP_BUILD=true` reuses images. Containers and the trace volume are removed on exit; `KEEP_LOCAL=true` leaves the UI at `http://localhost:18770`.
-- `check-destinations.sh` checks metrics, logs, traces, profiles and Faro against two isolated TLS fixtures. It also checks credential exposure, role isolation, proxy behavior and cleanup.
+- `check-destinations.sh` exercises the default PostgreSQL deployment against two isolated TLS fixtures: shopping writes actual order rows, the monitor can SELECT but has no DML privileges, and PostgreSQL health/query metrics, query-association logs and JDBC traces reach the destination alongside metrics/logs/traces/profiles/Faro. It checks generated DB passwords and ingestion tokens for exposure in Docker configuration, process arguments, logs, host files and telemetry buffers, plus role isolation, proxy behavior and cleanup. It also verifies cAdvisor/host metrics at the TLS destination, actual Grot container samples (not just exporter readiness), and bounded k6 shopping/browser traffic with passing thresholds and runner cleanup.
 
 These tests use synthetic data and do not contact Grafana Cloud, AWS or model APIs.
 
@@ -22,7 +22,7 @@ Requires k3d, Docker, kubectl, Helm, Python 3 and OpenSSL:
 bash tests/kubernetes/check.sh
 ```
 
-Creates a disposable loopback-only k3s cluster with a separate temporary kubeconfig. Checks both launch modes, signal delivery, token rotation, retarget protection, namespace isolation, external-Secret preservation and partial-install cleanup. The cluster, temporary credentials and test images are removed on exit. Your normal Kubernetes context is unchanged.
+Creates a disposable loopback-only k3s cluster with a separate temporary kubeconfig. Checks both launch modes, PostgreSQL/DB O11y, app signals, cluster inventory, kubelet cAdvisor, Linux node metrics and Kubernetes events. Also checks ingestion-token rotation, retarget protection, namespace ingress isolation, external-Secret preservation, shared-monitoring teardown and partial-install cleanup. The cluster, temporary credentials and test images are removed on exit. Your normal Kubernetes context is unchanged.
 
 ## Deliberate Java regression
 

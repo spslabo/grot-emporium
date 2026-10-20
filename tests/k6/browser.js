@@ -80,7 +80,7 @@ export default async function () {
       });
     }
     // Allow batched Faro telemetry to flush before the browser context closes.
-    await page.waitForTimeout(__ENV.VERIFY_TELEMETRY === 'true' ? 6000 : 2000);
+    await page.waitForTimeout(__ENV.VERIFY_TELEMETRY === 'true' || __ENV.TRAFFIC_DURATION ? 6000 : 2000);
     if (__ENV.EXPECT_FARO === 'true' && (faroAccepted === 0 || faroRejected > 0)) {
       throw new Error('GROT_VERIFY_FARO_FAILED');
     }

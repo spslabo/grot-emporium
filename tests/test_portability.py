@@ -56,7 +56,7 @@ class PrivateConfigurationTests(unittest.TestCase):
     def test_faro_public_disclosure_is_explicit(self):
         base = dict(load(self.path / 'ui.env'), FARO_ENABLED='true')
         validate('ui', dict(base, FARO_COLLECTOR_URL='/telemetry'))
-        external = dict(base, FARO_COLLECTOR_URL='https://collector.example.invalid/collect')
+        external = dict(base, FARO_COLLECTOR_URL='https://collector.example.invalid/collect/test-key')
         with self.assertRaises(ValueError): validate('ui', external)
         validate('ui', dict(external, FARO_PUBLIC_URL_ACKNOWLEDGED='true'))
         with self.assertRaises(ValueError): validate('ui', dict(base, FARO_COLLECTOR_URL='//other.invalid/collect'))
@@ -91,6 +91,24 @@ class PrivateConfigurationTests(unittest.TestCase):
 
 
 class SharedConfigurationTests(unittest.TestCase):
+    def test_public_docs_and_setup_have_no_live_connection_literals(self):
+        import re
+        paths = [ROOT / 'README.md', ROOT / 'scripts/grot_agent.py']
+        paths += list((ROOT / 'docs').glob('*.md')) + list((ROOT / 'evals').glob('*.yaml'))
+        patterns = [
+            r'arn:aws[^\s\"\']*:\d{12}:',
+            r'/Users/[^/\s\"\']+/',
+            r'\b(?:AKIA|ASIA)[A-Z0-9]{16}\b',
+            r'\b(?:glc_|glsa_|ghp_)[A-Za-z0-9_+/=-]{30,}',
+            r'-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----',
+        ]
+        for path in paths:
+            text = path.read_text()
+            for pattern in patterns:
+                self.assertFalse(re.search(pattern, text), str(path.relative_to(ROOT)))
+            hosts = re.findall(r'https?://([A-Za-z0-9.-]+\.grafana\.net)', text)
+            self.assertTrue(all(h in ('test.grafana.net', 'example.grafana.net') for h in hosts), str(path.relative_to(ROOT)))
+
     def test_no_real_cloud_stack_destinations_in_shared_configuration(self):
         import re
         for folder in ('deploy', 'observability', 'automation', 'src/app/chart'):

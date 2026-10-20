@@ -1,6 +1,6 @@
 # Deployment guide
 
-**The telemetry destination is Grafana Cloud.** Docker and Kubernetes are the application runtimes. Cloud applications such as Application Observability, Frontend Observability and Agent Observability require the corresponding products and permissions in your stack.
+**The telemetry destination is Grafana Cloud.** Docker and Kubernetes are the application runtimes. Cloud applications such as Application Observability, Frontend Observability, Database Observability and Agent Observability require the corresponding products and permissions in your stack.
 
 ## Connection settings
 
@@ -10,14 +10,14 @@ The Docker and Kubernetes quick launchers prompt for:
 
 | Input | Required value |
 |---|---|
-| OTLP (Traces) endpoint + username | OTLP HTTP base endpoint; not the Tempo query URL or `/v1/traces` |
-| Metrics endpoint + username | Full Prometheus remote-write URL |
+| OTLP (Traces) endpoint + username | HTTPS ingestion URL with path `/otlp`; not the Tempo query URL or `/otlp/v1/traces` |
+| Metrics endpoint + username | HTTPS remote-write URL with path `/api/prom/push`; `/api/prom` alone is not sufficient |
 | Logs endpoint + username | Full Loki push URL ending in `/loki/api/v1/push` |
-| Profiles endpoint + username | Pyroscope ingestion base URL |
+| Profiles endpoint + username | HTTPS Pyroscope ingestion origin, with no path (or just `/`); do not append `/ingest` |
 | Shared ingestion API token | Stack-scoped access-policy token with `traces:write`, `metrics:write`, `logs:write`, `profiles:write` |
-| Optional Faro URL | Collector URL from a Frontend Observability application; blank disables browser export |
+| Optional Faro URL | Complete HTTPS collector URL with `/collect/<application-key>`; blank disables browser export |
 
-Each hidden input is format-validated immediately. Invalid entries are re-prompted without losing earlier answers held in memory. Format validation does not authenticate credentials or prove delivery; use the verification commands below.
+Each hidden input is format-validated immediately: service-specific path, HTTPS, hostname/port syntax, absence of URL credentials/query/fragment, and nonempty whitespace-free ingestion usernames/tokens. Direct Grafana Cloud hostnames must match the selected ingestion service. JSON input and externally managed Secrets use the same field checks; duplicate JSON keys are rejected. Invalid entries are re-prompted without losing earlier answers held in memory. Format validation does not authenticate credentials or prove delivery; use the verification commands below.
 
 For Faro, allow the storefront origin and the browser probe origin in the application:
 
@@ -26,7 +26,7 @@ For Faro, allow the storefront origin and the browser probe origin in the applic
 
 The browser sends telemetry to the same-origin `/telemetry` proxy. The upstream collector URL stays server-side. Do not disable browser security.
 
-For separate per-signal tokens or optional UI settings, use `--settings-stdin`. It accepts JSON grouped by `alloy`, `gateway`, and optional `backend`/`ui` roles, with string values matching `scripts/grot_config.py`. Stream the object from your credential tool; do not put credentials in command arguments, shell history or the repository. Internal backend/UI defaults are generated automatically.
+For separate per-signal tokens or optional UI settings, use `--settings-stdin`. It accepts JSON grouped by `alloy`, `gateway`, and optional `backend`/`ui`/`database` roles, with string values matching `scripts/grot_config.py`. Stream the object from your credential tool; do not put credentials in command arguments, shell history or the repository. Internal backend/UI defaults are generated automatically.
 
 ## Docker
 
@@ -38,7 +38,7 @@ Requires Python 3, Docker Compose **2.30+**, and approximately 8 GiB available f
 ./grot stop customer-demo
 ```
 
-The launcher builds the five app images and starts Alloy, the app and the gateway. Open `http://localhost:8080`. Use `--port`, `--collector-port` and `--syslog-port` to choose distinct loopback ports for concurrent demos.
+The launcher builds the five app images and starts PostgreSQL for orders, Alloy with Database Observability, the app and the gateway. Database credentials are generated automatically. See [database setup and demo guide](../docs/database-observability.md). Open `http://localhost:8080`. Use `--port`, `--collector-port` and `--syslog-port` to choose distinct loopback ports for concurrent demos.
 
 Credentials are passed through stdin into role-specific tmpfs volumes inside the Docker engine. Consumers mount their role files read-only. Credentials are not stored in Docker's configured environment or image layers. The trusted, network-disabled staging container keeps these volumes mounted.
 
@@ -48,28 +48,31 @@ A failed launch attempts to stop workloads and clear runtime credentials, retain
 
 Token rotation for the same destination is supported by relaunching. Endpoint/ingestion-user changes are rejected while an alias has buffered data; stop and clean up before reusing it for another destination.
 
-For the store without telemetry:
+Use the launcher rather than running `compose.yaml` alone: PostgreSQL now requires privately staged database/application credentials. The isolated legacy in-memory test fixture remains available under `tests/local/`.
 
-```sh
-docker compose -f deploy/docker/compose.yaml up -d --build --wait
-docker compose -f deploy/docker/compose.yaml down
-```
+**Order data is disposable:** Docker relaunch resets PostgreSQL; Kubernetes database pod replacement resets it. Restarting only the orders application retains rows. Long-term mode manages credentials, not durable storage.
 
 ## Kubernetes quick
 
-Requires Python 3, Helm 3/4, an authenticated kubectl context, registry-accessible images and permissions to manage the dedicated namespace's workloads, RBAC and Secrets. The launcher does not provision a cluster or cloud infrastructure.
+Requires Python 3, Helm 3/4, an existing cluster and published Grot images. **First follow [cluster connection and image selection](../README.md#kubernetes-quick--including-k3s)** to set `CONTEXT`, `IMAGE_PREFIX` and `VERSION`.
+
+kubectl normally uses `~/.kube/config`; set `KUBECONFIG` only for a separate connection file supplied by your cluster administrator/provider. List connection names with `kubectl config get-contexts`. No Grot-specific kubeconfig path is required. Keep the same terminal for subsequent commands.
+
+Your cluster identity needs permission to manage the dedicated namespace's workloads, RBAC and Secrets. The launcher does not provision infrastructure.
 
 ```sh
 ./grot k8s customer-demo --mode quick --context "$CONTEXT" \
   --image-prefix "$IMAGE_PREFIX" --image-tag "$VERSION"
 ```
 
-The namespace defaults to `grot-customer-demo`. Use `--namespace` for another dedicated `grot-*` namespace. Quick mode can create it if your permissions allow. Settings go directly to demo-owned Kubernetes Secrets without a local credential manifest.
+`customer-demo` is the **destination alias**, `$CONTEXT` selects the **cluster connection**, and the **namespace** defaults to `grot-customer-demo`. Use `--namespace` to override it. Quick mode can create the namespace if permitted. Settings go directly to demo-owned Secrets. The installer prints each phase and exact verify/access/stop commands when ready.
 
-For browser access:
+After deployment, the script automatically verifies shopping, browser, telemetry transport and database collection. Failure stops the sequence before browser access. On success, interactive deployment starts a loopback-only tunnel, prints the summary and URL, and opens **http://localhost:8080**. Leave the terminal running while browsing; Ctrl+C closes the tunnel, not Grot. Use `--no-open` to skip this or `--port PORT` to change the local port. Noninteractive/`--settings-stdin` deployments skip browser startup.
+
+To reopen an existing deployment (no reinstall):
 
 ```sh
-kubectl --context "$CONTEXT" -n grot-customer-demo port-forward service/grot-gateway 8080:80
+./grot open customer-demo --context "$CONTEXT"
 ```
 
 Verify and stop:
@@ -91,6 +94,7 @@ Create the namespace and supply these Secrets through your team's existing tooli
 | `grot-ui-runtime` | Faro enablement and optional model/Agent Observability settings |
 | `grot-collector-runtime` | Collector identity and per-signal ingestion URLs, usernames and tokens |
 | `grot-gateway-runtime` | `GRAFANA_FARO_URL`, blank when Faro is disabled |
+| `grot-database-runtime` | Distinct `POSTGRES_PASSWORD`, `GROT_DB_APP_PASSWORD`, `GROT_DB_MONITOR_PASSWORD`; 32–128 URL-safe characters each |
 
 Keys follow the role schema in `scripts/grot_config.py`. Backend tracing/profiling must be enabled against `http://alloy:4318` and `http://alloy:4040`. UI Faro uses `/telemetry` when a gateway destination is supplied. Backend and collector environment identities must match. Set `GROT_CLUSTER` to your cluster identity when correlating with infrastructure telemetry.
 
@@ -99,19 +103,50 @@ Keys follow the role schema in `scripts/grot_config.py`. Backend tracing/profili
   --image-prefix "$IMAGE_PREFIX" --image-tag "$VERSION"
 ```
 
-This mode validates existing Secrets in memory without modifying them. It requires only namespaced permissions. The charts use native Secret references, not CSI-only mounts. [External Secret references](external-secrets.example.yaml) are provided for teams using an existing controller; installing a secret manager is outside this repository.
+This mode validates existing app Secrets in memory without modifying them. Default infrastructure installation needs cluster-wide permissions. With `--skip-k8s-monitoring`, app installation requires only namespaced permissions. The charts use native Secret references, not CSI-only mounts. [External Secret references](external-secrets.example.yaml) are provided for teams using an existing controller; installing a secret manager is outside this repository.
 
-After token rotation, rerun the installer to restart environment-based consumers, or use your approved restart controller. Changing destination endpoints/user IDs requires a separate deployment namespace. Verify/stop commands are the same as quick mode; long-term stop never deletes external Secrets. Clean up before changing an installation's mode.
+Database passwords must be coordinated with PostgreSQL roles; Secret edits alone do not rotate database passwords. See [database credential lifecycle](../docs/database-observability.md).
+
+After ingestion-token rotation, rerun the installer to restart environment-based consumers, or use your approved restart controller. Changing destination endpoints/user IDs requires a separate deployment namespace. Verify/stop commands are the same as quick mode; long-term stop never deletes external Secrets. Clean up before changing an installation's mode.
+
+## Demo traffic
+
+Use [the traffic presets and commands](../README.md#continuous-demo-traffic) after deployment. k6 executes inside the selected Compose network or app namespace and streams results to **Cloud k6** via `k6 cloud run --local-execution`; no public app endpoint is needed. Supply `--grafana-context CONTEXT` and, if needed, `--k6-project ID`. Existing gcx authentication supplies a k6-specific token, not the app's metrics/Loki token. Kubernetes stores it in the owned `grot-demo-traffic-cloud` Secret; Docker writes it through stdin into container tmpfs. Tokens are never literal command arguments, Job environment values, script ConfigMaps or host profiles. Test archives and Cloud-secret fetching are disabled; results and test logs are uploaded. Startup verifies the run in the selected project's Cloud history and prints its URL. Cloud limits/billing apply even with local execution; credentials must remain valid for the run.
+
+Each run is finite; changing presets requires stop/start. On Kubernetes, `--repeat` creates a CronJob that checks each minute and starts another bounded run after the previous completes (`concurrencyPolicy: Forbid`, no overlap). It continues until explicitly stopped; owned credentials are retained between runs. A detected initial startup/Cloud-registration failure suspends the schedule for inspection. `grot stop` also removes the traffic runner and its owned Cloud credential Secret. Kubernetes Job logs expire one hour after completion; explicit traffic stop removes local logs immediately but does not delete Cloud test history. Use `--local-only` explicitly for offline/logs-only testing.
+
+## Infrastructure monitoring
+
+**Kubernetes:** both launch modes install Grafana Kubernetes Monitoring chart **4.5.3**, in a separate `grot-monitoring` namespace. It collects cluster/workload state, kubelet/cAdvisor metrics, Linux node metrics and Kubernetes events. No second cAdvisor is deployed. The chart's Alloy operator is restricted to its own namespace. It reuses metrics/Loki credentials via a separate owned Secret—never plaintext Helm values—and keeps app metrics/logs/traces/profiles with the existing Grot Alloy.
+
+If Kubernetes Monitoring already exists, the installer refuses duplication; rerun with `--skip-k8s-monitoring` to leave existing monitoring alone. That monitoring must send data to the intended stack. Changing a Grot-managed infrastructure destination/cluster label is rejected; ingestion-token rotation is supported by rerunning installation.
+
+```sh
+# Add infrastructure to an existing deployment without restarting the app:
+./grot infrastructure customer-demo --context "$CONTEXT" --verbose
+# Optional read/query authentication to confirm infrastructure indexing too:
+./grot infrastructure customer-demo --context "$CONTEXT" --grafana-context demo-cloud
+# App stop preserves cluster-wide monitoring. Remove it explicitly:
+./grot infrastructure customer-demo --context "$CONTEXT" --remove
+```
+
+Removal deletes only the Grot-owned monitoring release and credentials. The namespace/shared CRDs remain. Use the original app namespace for removal; add `--namespace` if it was customized. Existing externally managed monitoring is never removed.
+
+**Docker / Linux VM:** cAdvisor **0.60.6** and node exporter **1.10.2** start with Grot. Alloy scrapes container CPU/memory/I/O plus Linux host CPU/memory/disk/filesystem metrics using the existing metrics destination. Container forwarding is restricted to this Compose project. No exporter host ports are published. Docker Desktop reports its Linux VM, not the macOS/Windows host. Host network-namespace metrics are deliberately not enabled. Rootful Linux Docker is the supported VM path; bare-VM binaries and rootless Docker are not covered. For nonstandard containerd installations, set `GROT_CONTAINERD_SOCKET` to the socket path as seen under cAdvisor's `/rootfs` host mount.
+
+**Privileges:** cAdvisor is privileged and mounts the host filesystem/cgroups and Docker socket. A read-only socket mount does **not** make the Docker API read-only. Node exporter mounts host files read-only and uses host PID visibility. Neither receives ingestion credentials. Only run this on a host where that access is authorized. `grot stop` removes both Docker exporters.
+
+**Verify:** Kubernetes infrastructure installation checks cAdvisor/state/node discovery and metrics/event destination acknowledgements. `--grafana-context` additionally checks indexed node/workload inventory, orders-container CPU, host CPU and events. Docker verification checks actual container/host samples, not just HTTP readiness. In Grafana Kubernetes Monitoring, select the `GROT_CLUSTER` label (normally your deployment alias). Confirm `kube_pod_info`, `container_cpu_usage_seconds_total`, `node_cpu_seconds_total` and Kubernetes events. Cluster monitoring needs time to scrape and index; healthy pods alone do not prove Cloud visibility.
 
 ### Images and networking
 
 Run the **Publish Grot images** workflow, or push an approved `grot-v*` release tag, to publish amd64/arm64 images to your fork's GHCR namespace, tagged with the commit SHA. Set `IMAGE_PREFIX` and `VERSION` to those published images. For private registries, use `--pull-secret EXISTING_SECRET_NAME` or your cluster's native credential provider.
 
-The telemetry chart uses namespace-scoped pod/log RBAC and collector ingress NetworkPolicy. No public ingress, load balancer, ClusterRole or host mount is created. Your CNI must enforce NetworkPolicy; the chart does not provide an egress allow-list. Kubernetes collector buffers are ephemeral and may lose queued telemetry on restart.
+The app telemetry chart uses namespace-scoped pod/log RBAC and collector ingress NetworkPolicy. The separate Kubernetes Monitoring chart uses cluster-wide discovery/exporters and CRDs. Neither installation creates public ingress or a load balancer; infrastructure collectors require cluster RBAC and node-exporter host mounts. Your CNI must enforce NetworkPolicy; the chart does not provide an egress allow-list. Kubernetes collector buffers are ephemeral and may lose queued telemetry on restart.
 
 ## Verification and limits
 
-`grot verify` and `grot verify-cloud` are **optional verification helpers**, not a required ingestion component or a substitute for independent checks. They run fixed HTTP/browser tests, counter comparisons and datasource queries. They do not use AI, require model credentials, invoke chat or call a model API.
+Kubernetes installation automatically runs local verification. `grot verify` reruns checks; `grot verify-cloud` optionally checks Cloud indexing. These checks are not ingestion components or substitutes for inspecting the Cloud product views. They run fixed HTTP/browser tests, counter comparisons and datasource queries. They do not use AI, require model credentials, invoke chat or call a model API.
 
 ### Create and select a gcx context
 
@@ -141,7 +176,8 @@ For Kubernetes, add `--context` and, if customized, `--namespace` to `verify`. `
 | HTTP shopping | Catalog/cart/synthetic checkout requests |
 | Chromium browser | Cart quantities/deletion, responsive images, checkout, and successful Faro responses when enabled |
 | Alloy counters | Fresh destination acknowledgements for metrics, logs, traces and profiles |
-| gcx queries | Current successful scrapes, recent trace matches and nonempty indexed profiles for all five services; recent deployment logs with per-service coverage reported |
+| PostgreSQL collection | Reachable database, successful statement scraping, query counters and DB O11y connection information |
+| gcx queries | Current successful scrapes, recent trace matches and nonempty indexed profiles for all five services; recent deployment logs; PostgreSQL health/query metrics and query-association logs |
 
 Progress is printed per probe and signal. Private subprocess/query output is suppressed. Tests use synthetic data and do not call models. Without `--grafana-context`, verification is transport-only. With it, the Cloud stage also runs after a local-stage failure; either failure makes the combined command fail.
 
@@ -157,6 +193,7 @@ You can skip the helper and use Grafana Explore, Cloud applications, direct gcx 
 - **Logs:** query `{service_namespace="grot-emporium",cluster="customer-demo"}` and inspect timestamps and service labels.
 - **Traces:** query `{resource.service.namespace="grot-emporium"}` in Tempo, then inspect a shopping trace's services and parent/child spans. Narrow the query when multiple deployments share this namespace.
 - **Profiles:** select the Grot services and deployment labels in Profiles and inspect nonempty samples.
+- **Database telemetry:** check Database Observability's Telemetry status and Queries overview; see [DB O11y guide](../docs/database-observability.md) for queries, privacy, permissions and limits.
 - **Browser telemetry:** inspect sessions/errors in your Frontend Observability application; a successful proxy response alone does not prove indexing.
 
 Replace `customer-demo` with your actual `GROT_CLUSTER` label. Use the datasources and read permissions for the receiving stack.
@@ -193,7 +230,7 @@ See [Optional AI chat](../docs/optional-ai-chat.md) for UI-role credentials, mod
 
 ## Security
 
-- Use synthetic customer/payment data only. Storage is in-memory; this is not a production payment system.
+- Use synthetic customer/payment data only. Orders use disposable PostgreSQL storage; other services retain their existing lightweight storage. This is not a production payment system.
 - Host, Docker-daemon and cluster administrators can access runtime credentials. Protect host swap and VM snapshots as well as files.
 - Kubernetes Secret base64 is not encryption. Configure at-rest encryption, backup protection, restricted Secret/pod-exec/pod-creation permissions and scoped, short-lived tokens.
 - Put public demos behind access control, especially when paid chat is enabled.

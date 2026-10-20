@@ -10,6 +10,26 @@ x-java-health: &java-health
   timeout: 3s
   retries: 30
 services:
+  postgres:
+    image: postgres:17.11-alpine
+    command: [postgres, -c, config_file=/etc/grot-postgres/postgresql.conf]
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_DB: orders
+      PGDATA: /var/lib/postgresql/data/pgdata
+    env_file:
+      - path: ${GROT_DATABASE_ENV_FILE:-/dev/null}
+        format: raw
+    volumes:
+      - ../postgres/init.sql:/docker-entrypoint-initdb.d/10-grot.sql:ro
+      - ../postgres/postgresql.conf:/etc/grot-postgres/postgresql.conf:ro
+    # Deliberately ephemeral; no surprise disk volumes or cleanup liabilities.
+    tmpfs: [/var/lib/postgresql/data:size=512m]
+    healthcheck:
+      test: [CMD-SHELL, "pg_isready -h 127.0.0.1 -U postgres -d orders"]
+      interval: 3s
+      timeout: 3s
+      retries: 40
   ui:
     build: ../../src/ui
     image: ${GROT_IMAGE_PREFIX:-grot}/ui:${GROT_IMAGE_TAG:-local}
@@ -43,6 +63,12 @@ services:
     environment:
       OTEL_SERVICE_NAME: grot-orders
       AWS_EC2_METADATA_DISABLED: "true"
+      RETAIL_ORDERS_PERSISTENCE_PROVIDER: postgres
+      RETAIL_ORDERS_PERSISTENCE_ENDPOINT: postgres:5432
+      RETAIL_ORDERS_PERSISTENCE_NAME: orders
+      RETAIL_ORDERS_PERSISTENCE_USERNAME: grot_orders
+    depends_on:
+      postgres: { condition: service_healthy }
     healthcheck: *java-health
   catalog:
     build: ../../src/catalog

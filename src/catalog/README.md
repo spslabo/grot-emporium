@@ -33,6 +33,7 @@ Several "utility" endpoints are provided with useful functionality for various s
 
 | Method   | Name                     | Description                                                                        |
 | -------- | ------------------------ | ---------------------------------------------------------------------------------- |
+| `GET`    | `/chaos/capabilities`   | Reports support for request-scoped synthetic faults; does not change server state |
 | `POST`   | `/chaos/status/{code}`   | All HTTP requests to API paths will return the given HTTP status code              |
 | `DELETE` | `/chaos/status`          | Disables the HTTP status response above                                            |
 | `POST`   | `/chaos/latency/{delay}` | All HTTP requests to API paths will have the specified delay added in milliseconds |

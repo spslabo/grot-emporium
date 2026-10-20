@@ -34,7 +34,7 @@ loki.relabel "syslog" {
   forward_to = []
   rule {
     source_labels = ["__syslog_message_app_name"]
-    regex = "grot-(ui|cart|orders|catalog|checkout)"
+    regex = "grot-(ui|cart|orders|catalog|checkout|postgres)"
     action = "keep"
   }
   rule {
@@ -54,5 +54,5 @@ loki.source.syslog "grot" {
     }
   }
   relabel_rules = loki.relabel.syslog.rules
-  forward_to = [loki.write.destination.receiver]
+  forward_to = [loki.write.destination.receiver, loki.process.database_logs.receiver]
 }

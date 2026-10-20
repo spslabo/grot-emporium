@@ -8,14 +8,14 @@ from scripts.grot_config import private_path
 
 
 def mock_settings(name):
-    collector = dict(GRAFANA_OTLP_ENDPOINT=f'https://sink:18766/{name}/otlp',
-        GRAFANA_METRICS_URL=f'https://sink:18766/{name}/metrics',
-        GRAFANA_LOGS_URL=f'https://sink:18766/{name}/logs/loki/api/v1/push',
-        GRAFANA_PROFILES_URL=f'https://sink:18766/{name}/profiles', GROT_CLUSTER=name)
+    collector = dict(GRAFANA_OTLP_ENDPOINT='https://sink:18766/otlp',
+        GRAFANA_METRICS_URL='https://sink:18766/api/prom/push',
+        GRAFANA_LOGS_URL='https://sink:18766/loki/api/v1/push',
+        GRAFANA_PROFILES_URL='https://sink:18766', GROT_CLUSTER=name)
     for signal in ('OTLP', 'METRICS', 'LOGS', 'PROFILES'):
         collector[f'GRAFANA_{signal}_USER'] = 'test-' + name
         collector[f'GRAFANA_{signal}_TOKEN'] = 'dummy-not-a-real-token'
-    return {'alloy': collector, 'gateway': {'GRAFANA_FARO_URL': f'https://sink:18766/{name}/collect'}}
+    return {'alloy': collector, 'gateway': {'GRAFANA_FARO_URL': f'https://sink:18766/collect/{name}'}}
 
 
 def certificate(root, hosts=('sink',)):

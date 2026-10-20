@@ -24,7 +24,7 @@ class HelmTests(unittest.TestCase):
         return [obj for obj in yaml.safe_load_all(result.stdout) if obj]
 
     def test_all_service_identities_and_pod_uid_attributes(self):
-        deployments = [d for d in self.render() if d['kind']=='Deployment']
+        deployments = [d for d in self.render() if d['kind']=='Deployment' and d['metadata']['name'] != 'grot-postgres']
         self.assertEqual(5, len(deployments))
         seen = set()
         for d in deployments:
@@ -43,7 +43,7 @@ class HelmTests(unittest.TestCase):
         for enabled in (False, True):
             extra = ['-f','src/app/chart/values-grot-profiles.yaml'] if enabled else []
             for d in self.render(*extra):
-                if d['kind']!='Deployment': continue
+                if d['kind']!='Deployment' or d['metadata']['name'] == 'grot-postgres': continue
                 env = {v['name']:v for v in d['spec']['template']['spec']['containers'][0]['env']}
                 name = env['OTEL_SERVICE_NAME']['value']
                 if name in ('grot-ui','grot-cart','grot-orders'):
@@ -54,7 +54,7 @@ class HelmTests(unittest.TestCase):
     def test_runtime_secret_precedence_and_ui_isolation(self):
         rendered = self.render('--set', 'global.grotBackendSecret=backend-private', '--set', 'ui.runtimeSecret=ui-private', '--namespace', 'other-team')
         for obj in rendered:
-            if obj['kind'] != 'Deployment': continue
+            if obj['kind'] != 'Deployment' or obj['metadata']['name'] == 'grot-postgres': continue
             container = obj['spec']['template']['spec']['containers'][0]
             refs = [entry['secretRef']['name'] for entry in container['envFrom'] if 'secretRef' in entry]
             self.assertIn('backend-private', refs)

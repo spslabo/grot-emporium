@@ -85,6 +85,9 @@ public class ChatController {
   @Value("${retail.ui.chat.prompt}")
   private String systemPrompt;
 
+  @Value("${GROT_CHAT_SYNTHETIC_FAULTS_ENABLED:false}")
+  private boolean syntheticFaultsEnabled;
+
   @Autowired
   private ChatClient client;
 
@@ -93,14 +96,22 @@ public class ChatController {
 
   @PostMapping("/submit")
   public Flux<ServerSentEvent<String>> streamEvents(
-    @Valid @RequestBody ChatRequest request
+    @Valid @RequestBody ChatRequest request,
+    @org.springframework.web.bind.annotation.RequestHeader(value = "X-Grot-Synthetic-Fault", defaultValue = "") String fault
   ) {
     var objectMapper = new ObjectMapper();
+
+    if (syntheticFaultsEnabled && "error".equals(fault)) {
+      return telemetry.observe(Flux.<org.springframework.ai.chat.model.ChatResponse>error(
+        new org.springframework.web.server.ResponseStatusException(org.springframework.http.HttpStatus.SERVICE_UNAVAILABLE,
+          "Injected synthetic chat failure (not a Bedrock outage)")), request.safeConversationId(), true, systemPrompt, request.getMessage())
+        .map(ignored -> ServerSentEvent.<String>builder().data("").build());
+    }
 
     return telemetry.observe(this.client.prompt(request.getMessage())
       .system(this.systemPrompt)
       .stream()
-      .chatResponse(), request.safeConversationId())
+      .chatResponse(), request.safeConversationId(), false, systemPrompt, request.getMessage())
       .filter(c -> c.getResult() != null && c.getResult().getOutput() != null && c.getResult().getOutput().getText() != null)
       .map(c -> {
         try {

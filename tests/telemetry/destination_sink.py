@@ -7,6 +7,8 @@ import json
 import base64
 import os
 import ssl
+import gzip
+from snappy_block import decode
 
 counts = Counter()
 lock = Lock()
@@ -19,16 +21,22 @@ class Handler(BaseHTTPRequestHandler):
         self.send_response(200); self.end_headers(); self.wfile.write(data)
     def do_POST(self):
         path = urlsplit(self.path).path
-        parts = path.strip('/').split('/')
-        if len(parts) < 2 or parts[0] not in ('alpha', 'beta'):
-            self.send_error(404); return
+        # Match real ingestion paths; identify tenants by authentication, not
+        # artificial URL prefixes that would bypass production validation.
+        destination = None
         rotated = False
-        if 'collect' not in path:
+        if path.startswith('/collect/'):
+            destination = path.removeprefix('/collect/')
+            if destination not in ('alpha', 'beta'): self.send_error(404); return
+        else:
             tokens = ('dummy-not-a-real-token', 'dummy-rotated-not-a-real-token')
-            expected = ['Basic ' + base64.b64encode(f'test-{parts[0]}:{token}'.encode()).decode() for token in tokens]
-            if self.headers.get('Authorization') not in expected:
-                self.send_error(401); return
-            rotated = self.headers.get('Authorization') == expected[1]
+            for tenant in ('alpha', 'beta'):
+                expected = ['Basic ' + base64.b64encode(f'test-{tenant}:{token}'.encode()).decode() for token in tokens]
+                if self.headers.get('Authorization') in expected:
+                    destination = tenant
+                    rotated = self.headers.get('Authorization') == expected[1]
+                    break
+            if destination is None: self.send_error(401); return
         size = int(self.headers.get('Content-Length', '0'))
         if size > 16 * 1024 * 1024: self.send_error(413); return
         body = self.rfile.read(size)
@@ -44,18 +52,38 @@ class Handler(BaseHTTPRequestHandler):
             # No incoming browser credentials may pass through the gateway.
             if any(self.headers.get(key) for key in ('Cookie', 'Authorization', 'X-Goog-IAP-JWT-Assertion', 'X-Forwarded-For')):
                 with lock: counts['credential_leak'] += 1
-        elif 'traces' in path: signal = 'traces'
-        elif 'profiles' in path: signal = 'profiles'
-        elif 'logs' in path: signal = 'logs'
-        elif 'metrics' in path: signal = 'metrics'
+        elif path == '/otlp/v1/traces': signal = 'traces'
+        elif path in ('/ingest', '/push.v1.PusherService/Push'): signal = 'profiles'
+        elif path == '/loki/api/v1/push': signal = 'logs'
+        elif path in ('/api/prom/push', '/otlp/v1/metrics'): signal = 'metrics'
         else: self.send_error(404); return
+        db_markers = []
+        if signal == 'traces':
+            decoded = gzip.decompress(body) if self.headers.get('Content-Encoding') == 'gzip' else body
+            if b'postgresql' in decoded and b'db.system' in decoded:
+                db_markers.append('db-traces')
+        if path in ('/api/prom/push', '/loki/api/v1/push'):
+            try:
+                decoded = decode(body)
+                for needle, marker in [(b'container_cpu_usage_seconds_total', 'infra-containers'),
+                                       (b'node_cpu_seconds_total', 'infra-host'),
+                                       (b'kube_pod_info', 'infra-kube-state'),
+                                       (b'kubernetes-events', 'infra-events')]:
+                    if needle in decoded: db_markers.append(marker)
+                if b'integrations/db-o11y' in decoded:
+                    if b'pg_stat_statements_calls_total' in decoded: db_markers.append('db-query-metrics')
+                    if b'query_association' in decoded and b'querytext=' in decoded: db_markers.append('db-query-details')
+                    if b'pg_stat_database_numbackends' in decoded: db_markers.append('db-health')
+            except (ValueError, IndexError):
+                self.send_error(400); return
         with lock:
-            counts[parts[0] + ':' + signal] += 1
-            if rotated: counts[parts[0] + ':rotated:' + signal] += 1
+            for marker in db_markers: counts[destination + ':' + marker] += 1
+            counts[destination + ':' + signal] += 1
+            if rotated: counts[destination + ':rotated:' + signal] += 1
             if signal == 'profiles':
                 profile = parse_qs(urlsplit(self.path).query).get('name', [''])[0]
                 for service in ('ui', 'cart', 'orders', 'catalog', 'checkout'):
-                    if 'grot-' + service in profile: counts[parts[0] + ':profile:' + service] += 1
+                    if 'grot-' + service in profile: counts[destination + ':profile:' + service] += 1
         self.send_response(200)
         # An empty protobuf ExportTraceServiceResponse is a successful OTLP response.
         self.send_header('Content-Type', 'application/x-protobuf' if signal == 'traces' else 'application/json')

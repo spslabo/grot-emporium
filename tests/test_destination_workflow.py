@@ -16,10 +16,10 @@ from scripts.sync_grot_alloy import outputs
 def fixture():
     collector = {'GROT_CLUSTER': 'team-a'}
     for signal, field in [('OTLP', 'ENDPOINT'), ('METRICS', 'URL'), ('LOGS', 'URL'), ('PROFILES', 'URL')]:
-        collector[f'GRAFANA_{signal}_{field}'] = f'https://private.example.invalid/{signal.lower()}' + ('/loki/api/v1/push' if signal == 'LOGS' else '')
+        collector[f'GRAFANA_{signal}_{field}'] = 'https://private.example.invalid' + {'OTLP': '/otlp', 'METRICS': '/api/prom/push', 'LOGS': '/loki/api/v1/push', 'PROFILES': ''}[signal]
         collector[f'GRAFANA_{signal}_USER'] = 'test-tenant'
         collector[f'GRAFANA_{signal}_TOKEN'] = 'synthetic-private-token'
-    return grot.make_roles({'alloy': collector, 'gateway': {'GRAFANA_FARO_URL': 'https://private-faro.example.invalid/collect'}})
+    return grot.make_roles({'alloy': collector, 'gateway': {'GRAFANA_FARO_URL': 'https://private-faro.example.invalid/collect/test-key'}})
 
 
 class FakeCluster:
@@ -47,9 +47,33 @@ class DestinationWorkflowTests(unittest.TestCase):
         self.root = Path(self.temp.name)
         patcher = patch.object(grot, 'CONFIG_ROOT', self.root / 'state')
         patcher.start(); self.addCleanup(patcher.stop)
+        infrastructure = patch.object(grot, 'setup_infrastructure')
+        infrastructure.start(); self.addCleanup(infrastructure.stop)
+        verifier = patch.object(grot, 'verify_k8s')
+        verifier.start(); self.addCleanup(verifier.stop)
         self.roles = fixture()
         self.args = argparse.Namespace(destination='team-a', context='test', namespace='grot-team-a',
             image_prefix='registry.example.invalid/team', image_tag='test-sha', mode='quick', settings_stdin=False, pull_secret=None)
+
+    def test_install_prints_progress_and_exact_followup_commands_without_secrets(self):
+        cluster = FakeCluster()
+        self.args.context = 'test context'
+        self.args.namespace = 'grot-custom'
+        with patch.object(grot, 'run', side_effect=cluster), patch.object(grot, 'settings', return_value=self.roles), contextlib.redirect_stdout(io.StringIO()) as output:
+            grot.k8s(self.args)
+        text = output.getvalue()
+        for step in range(1, 9): self.assertIn(f'[{step}/8]', text)
+        self.assertIn('Waiting for grot-alloy', text)
+        self.assertIn("Ready: destination=team-a, context='test context', namespace=grot-custom", text)
+        self.assertIn("./grot verify team-a --context 'test context' --namespace grot-custom", text)
+        self.assertIn("kubectl --context 'test context' -n grot-custom port-forward service/grot-gateway 8080:80", text)
+        self.assertIn("./grot stop team-a --context 'test context' --namespace grot-custom", text)
+        self.assertIn('same terminal/KUBECONFIG', text)
+        self.assertIn('View the app: http://localhost:8080 (after starting port-forward below)', text)
+        self.assertIn('leave it running while browsing', text)
+        for value in self.roles['database'].values(): self.assertNotIn(value, text)
+        self.assertNotIn('synthetic-private-token', text)
+        self.assertNotIn('https://private', text)
 
     def test_prompt_retries_only_invalid_field_and_preserves_prior_answers(self):
         answers = [
@@ -57,8 +81,8 @@ class DestinationWorkflowTests(unittest.TestCase):
             'https://example.invalid/api/prom/push', 'metrics-user',
             'https://example.invalid/loki/api/v1/push', 'logs-user',
             'https://example.invalid/private-canary?bad=true',
-            'https://example.invalid/profiles ',
-            'https://example.invalid/profiles', 'profiles-user',
+            'https://profiles.example.invalid ',
+            'https://profiles.example.invalid', 'profiles-user',
             '', 'token with whitespace', 'synthetic-token',
             'invalid-faro-canary', 'https://example.invalid/collect/test',
         ]
@@ -69,7 +93,7 @@ class DestinationWorkflowTests(unittest.TestCase):
         self.assertEqual(3, labels.count('Profiles (Pyroscope) ingestion endpoint: '))
         self.assertEqual(1, labels.count('OTLP (Traces) ingestion endpoint: '))
         self.assertEqual('trace-user', roles['alloy']['GRAFANA_OTLP_USER'])
-        self.assertEqual('https://example.invalid/profiles', roles['alloy']['GRAFANA_PROFILES_URL'])
+        self.assertEqual('https://profiles.example.invalid', roles['alloy']['GRAFANA_PROFILES_URL'])
         for signal in ('OTLP', 'METRICS', 'LOGS', 'PROFILES'):
             self.assertEqual('synthetic-token', roles['alloy'][f'GRAFANA_{signal}_TOKEN'])
         for value in answers:
@@ -183,7 +207,7 @@ class DestinationWorkflowTests(unittest.TestCase):
         with patch.object(grot, 'run', side_effect=cluster), patch.object(grot, 'settings', return_value=self.roles), contextlib.redirect_stdout(io.StringIO()):
             grot.k8s(self.args)
         secrets = [obj for (kind, _), obj in cluster.objects.items() if kind == 'secret']
-        self.assertEqual(4, len(secrets))
+        self.assertEqual(5, len(secrets))
         owner = cluster.objects[('configmap', grot.LEDGER)]['data']['owner']
         self.assertTrue(all(grot.owned(obj, owner) for obj in secrets))
         self.assertEqual([], list(self.root.iterdir()))
@@ -224,7 +248,7 @@ class DestinationWorkflowTests(unittest.TestCase):
             cluster.objects[('secret', 'grot-ui-runtime')]['metadata']['labels'] = {}
             cluster.calls.clear(); grot.stop(self.args)
         deleted = [command[command.index('--raw')+1] for command, _ in cluster.calls if '--raw' in command]
-        self.assertEqual(4, len(deleted))  # Three owned Secrets + ownership ledger.
+        self.assertEqual(5, len(deleted))  # Four owned Secrets + ownership ledger.
         self.assertFalse(any('grot-ui-runtime' in path for path in deleted))
         for command, kwargs in cluster.calls:
             if '--raw' in command: self.assertIn('resourceVersion', json.loads(kwargs['data'])['preconditions'])
@@ -292,7 +316,7 @@ class DestinationWorkflowTests(unittest.TestCase):
 
     def test_runtime_values_are_quoted_stdin_not_arguments(self):
         marker = self.root / 'must-not-exist'
-        token = f"test'$(touch {marker})$variable;#literal"
+        token = f"test'$(touch${{IFS}}{marker})$variable;#literal"
         self.roles['alloy']['GRAFANA_OTLP_TOKEN'] = token
         calls = []
         def run(command, **kwargs):
@@ -326,6 +350,9 @@ class CollectorContractTests(unittest.TestCase):
                 self.assertIn('secretRef', container['envFrom'][0])
                 self.assertTrue(container['securityContext']['readOnlyRootFilesystem'])
 
-    def test_compose_never_mounts_docker_socket(self):
+    def test_only_cadvisor_mounts_docker_socket_not_apps_or_alloy(self):
         text = (grot.ROOT / 'deploy/docker/compose.telemetry.yaml').read_text()
-        self.assertNotIn('docker.sock', text); self.assertIn('driver: syslog', text)
+        services = yaml.safe_load(text.replace('!reset', ''))['services']
+        holders = [name for name, spec in services.items() if any('docker.sock' in mount for mount in spec.get('volumes', []))]
+        self.assertEqual(['cadvisor'], holders)
+        self.assertIn('driver: syslog', text)
