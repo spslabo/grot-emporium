@@ -6,12 +6,25 @@ A demo shop with metrics, logs, traces, profiles, browser telemetry and PostgreS
 
 **Shopping and browser traffic starts automatically with the app.** No extra script, Cloud k6 account or AI provider is needed.
 
+## Requirements
+
+| Requirement | Docker setup | Kubernetes setup |
+|---|---|---|
+| Python 3 | Required | Required |
+| Running Docker | Compose 2.30+; about 8 GiB available memory | Required for browser checks |
+| Grafana Cloud stack + ingestion credentials | Required | Required |
+| kubectl + Helm 3/4 | Not needed | Required |
+| Cluster access / kubeconfig | Not needed | Required; cluster-admin for included monitoring |
+| Published app images | Not needed; built locally | Required; [publish instructions below](#2-publish-the-app-images) |
+| [gcx](https://github.com/grafana/gcx) | Optional: Cloud checks and Cloud k6 results | Optional: Cloud checks and Cloud k6 results |
+
+[Where to find Grafana connection settings](deploy/README.md#connection-settings).
+
 ## Start here
 
 1. Clone this repository (or your fork) and open a terminal in its directory.
-2. Install **Python 3** and **Docker with Compose 2.30+**. Start Docker.
-3. Have a **Grafana Cloud stack** ready. The launcher prompts for its telemetry endpoints and ingestion credentials. [Where to find these settings](deploy/README.md#connection-settings).
-4. Choose **Docker** for the simplest setup, or **Kubernetes** below.
+2. Start Docker.
+3. Choose **Docker** for the simplest setup, or **Kubernetes** below.
 
 ## Docker — quickest option
 
