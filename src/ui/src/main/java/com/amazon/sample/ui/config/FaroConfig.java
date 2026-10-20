@@ -39,6 +39,10 @@ public class FaroConfig {
     }
   }
 
-  public boolean isEnabled() { return enabled; }
-  public String getUrl() { return url; }
+  public boolean isEnabled() {
+    return enabled;
+  }
+  public String getUrl() {
+    return url;
+  }
 }

@@ -67,6 +67,13 @@ class DatabaseTests(unittest.TestCase):
         self.assertEqual('GROT_DB_APP_PASSWORD', env['RETAIL_ORDERS_PERSISTENCE_PASSWORD']['valueFrom']['secretKeyRef']['key'])
         self.assertNotIn({'secretRef': {'name': 'grot-database-runtime'}}, container['envFrom'])
 
+    def test_standalone_orders_uses_only_application_database_credentials(self):
+        services = yaml.safe_load((grot.ROOT / 'deploy/docker/compose.yaml').read_text())['services']
+        paths = [entry['path'] for entry in services['orders']['env_file']]
+        self.assertIn('${GROT_ORDERS_DB_ENV_FILE:-/dev/null}', paths)
+        self.assertNotIn('${GROT_DATABASE_ENV_FILE:-/dev/null}', paths)
+        self.assertEqual('${GROT_DATABASE_ENV_FILE:-/dev/null}', services['postgres']['env_file'][0]['path'])
+
     def test_collector_only_receives_monitoring_password(self):
         text = subprocess.check_output(['helm', 'template', 'grot-telemetry', 'deploy/telemetry-chart'], cwd=grot.ROOT, text=True)
         db_keys = [e['valueFrom']['secretKeyRef']['key']

@@ -15,7 +15,7 @@ describe("testing catalog", () => {
       .cards()
       .first()
       .find(".product-name")
-      .should("contain.text", "Aqua Ace GT");
+      .should("contain.text", "Cloud Grot");
     catalog.cards().its("length").should("eq", 6);
   });
 

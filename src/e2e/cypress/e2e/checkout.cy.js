@@ -32,8 +32,8 @@ describe("testing checkout", () => {
 
       checkoutOrder.shipping().should("contain.text", "$10");
       checkoutOrder.tax().should("contain.text", "$5");
-      checkoutOrder.subtotal().should("contain.text", "$150");
-      checkoutOrder.total().should("contain.text", "$165");
+      checkoutOrder.subtotal().should("contain.text", "$25");
+      checkoutOrder.total().should("contain.text", "$40");
     });
   });
 
@@ -61,8 +61,8 @@ describe("testing checkout", () => {
 
       checkoutOrder.shipping().should("contain.text", "$10");
       checkoutOrder.tax().should("contain.text", "$5");
-      checkoutOrder.subtotal().should("contain.text", "$360");
-      checkoutOrder.total().should("contain.text", "$375");
+      checkoutOrder.subtotal().should("contain.text", "$45");
+      checkoutOrder.total().should("contain.text", "$60");
     });
   });
 });

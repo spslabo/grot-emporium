@@ -1,6 +1,8 @@
 package com.amazon.sample.ui.config.chat;
 
-import com.grafana.agento11y.sdk.*;
+import com.grafana.agento11y.sdk.Agento11yClient;
+import com.grafana.agento11y.sdk.Agento11yClientConfig;
+import com.grafana.agento11y.sdk.ContentCaptureMode;
 import io.opentelemetry.api.OpenTelemetry;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.annotation.Bean;

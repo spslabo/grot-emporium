@@ -59,7 +59,11 @@ services:
   orders:
     build: ../../src/orders
     image: ${GROT_IMAGE_PREFIX:-grot}/orders:${GROT_IMAGE_TAG:-local}
-    env_file: *backend-env
+    env_file:
+      - path: ${GROT_BACKEND_ENV_FILE:-/dev/null}
+        format: raw
+      - path: ${GROT_ORDERS_DB_ENV_FILE:-/dev/null}
+        format: raw
     environment:
       OTEL_SERVICE_NAME: grot-orders
       AWS_EC2_METADATA_DISABLED: "true"

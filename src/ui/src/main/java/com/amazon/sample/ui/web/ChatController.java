@@ -44,17 +44,22 @@ public class ChatController {
 
   private static class ChatRequest {
 
+    private static final int MAX_MESSAGE_LENGTH = 2000;
+
     @JsonProperty("message")
     @NotBlank
-    @Size(max = 2000)
+    @Size(max = MAX_MESSAGE_LENGTH)
     private String message;
 
     @JsonProperty("conversationId")
     private String conversationId;
 
     public String safeConversationId() {
-      try { return UUID.fromString(conversationId).toString(); }
-      catch (RuntimeException ignored) { return UUID.randomUUID().toString(); }
+      try {
+        return UUID.fromString(conversationId).toString();
+      } catch (RuntimeException ignored) {
+        return UUID.randomUUID().toString();
+      }
     }
 
     public String getMessage() {
