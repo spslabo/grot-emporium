@@ -40,6 +40,10 @@ class DatabaseTests(unittest.TestCase):
         self.assertEqual(first, cluster.objects[('secret', 'grot-database-runtime')]['data'])
 
     def render(self):
+        # Tests must work from a clean checkout, without another test having
+        # populated the chart dependencies first.
+        subprocess.run(['helm', 'dependency', 'build', 'src/app/chart'],
+            cwd=grot.ROOT, check=True, capture_output=True, text=True)
         text = subprocess.check_output(['helm', 'template', 'grot', 'src/app/chart', '-f',
             'src/app/chart/values-grot.yaml'], cwd=grot.ROOT, text=True)
         return [o for o in yaml.safe_load_all(text) if o]
