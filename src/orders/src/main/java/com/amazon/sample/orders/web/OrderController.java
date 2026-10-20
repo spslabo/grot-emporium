@@ -49,7 +49,7 @@ public class OrderController {
   @PostMapping(produces = { "application/json" })
   @Operation(summary = "Create an order", operationId = "createOrder")
   public ExistingOrder order(@RequestBody Order orderRequest) {
-    log.debug("Creating order {}", orderRequest);
+    log.debug("Received order creation request");
 
     return this.orderMapper.toExistingOrder(
         this.service.create(this.orderMapper.toOrderEntity(orderRequest))
@@ -61,7 +61,6 @@ public class OrderController {
   public List<ExistingOrder> order() {
     return this.service.list()
       .stream()
-      .peek(o -> System.out.println("Order: " + o))
       .map(this.orderMapper::toExistingOrder)
       .collect(Collectors.toList());
   }

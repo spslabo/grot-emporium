@@ -30,7 +30,7 @@ RUN go mod download
 
 COPY . .
 
-RUN go build -o main main.go
+RUN go build -o main .
 
 # Final stage
 FROM public.ecr.aws/amazonlinux/amazonlinux:2023

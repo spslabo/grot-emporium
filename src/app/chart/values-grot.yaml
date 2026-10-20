@@ -1,0 +1,89 @@
+# Override all image repositories/tags with images built from this fork before deployment.
+# Existing Secret names only. Provision values outside Helm/Git.
+global:
+  grotBackendSecret: ""
+
+grotDatabase:
+  enabled: true
+
+grotTelemetry:
+  enabled: false
+  environment: demo
+  version: local
+  cluster: unknown
+
+ui:
+  podLabels:
+    app.kubernetes.io/part-of: grot-emporium
+    deployment.environment: demo
+    service_name: grot-ui
+  extraEnvFrom: &shared
+    - configMapRef:
+        name: grot-emporium-telemetry
+  extraEnv:
+    - { name: OTEL_SERVICE_NAME, value: grot-ui }
+    - &poduid
+      name: POD_UID
+      valueFrom:
+        fieldRef: { fieldPath: metadata.uid }
+    - &resource
+      name: OTEL_RESOURCE_ATTRIBUTES
+      value: "$(GROT_RESOURCE_ATTRIBUTES),service.instance.id=$(POD_UID),k8s.pod.uid=$(POD_UID)"
+    - &version
+      name: SERVICE_VERSION
+      valueFrom:
+        configMapKeyRef: { name: grot-emporium-telemetry, key: SERVICE_VERSION }
+  app:
+    chat:
+      enabled: false
+cart:
+  podLabels:
+    app.kubernetes.io/part-of: grot-emporium
+    deployment.environment: demo
+    service_name: grot-cart
+  extraEnvFrom: *shared
+  extraEnv:
+    - { name: OTEL_SERVICE_NAME, value: grot-cart }
+    - *poduid
+    - *resource
+    - *version
+catalog:
+  podLabels:
+    app.kubernetes.io/part-of: grot-emporium
+    deployment.environment: demo
+    service_name: grot-catalog
+  extraEnvFrom: *shared
+  extraEnv:
+    - { name: OTEL_SERVICE_NAME, value: grot-catalog }
+    - *poduid
+    - *resource
+    - *version
+checkout:
+  podLabels:
+    app.kubernetes.io/part-of: grot-emporium
+    deployment.environment: demo
+    service_name: grot-checkout
+  extraEnvFrom: *shared
+  extraEnv:
+    - { name: OTEL_SERVICE_NAME, value: grot-checkout }
+    - *poduid
+    - *resource
+    - *version
+orders:
+  podLabels:
+    app.kubernetes.io/part-of: grot-emporium
+    deployment.environment: demo
+    service_name: grot-orders
+  extraEnvFrom: *shared
+  extraEnv:
+    - { name: OTEL_SERVICE_NAME, value: grot-orders }
+    - { name: RETAIL_ORDERS_PERSISTENCE_PROVIDER, value: postgres }
+    - { name: RETAIL_ORDERS_PERSISTENCE_ENDPOINT, value: "postgres:5432" }
+    - { name: RETAIL_ORDERS_PERSISTENCE_NAME, value: orders }
+    - { name: RETAIL_ORDERS_PERSISTENCE_USERNAME, value: grot_orders }
+    - name: RETAIL_ORDERS_PERSISTENCE_PASSWORD
+      valueFrom:
+        secretKeyRef: { name: grot-database-runtime, key: GROT_DB_APP_PASSWORD }
+    - *poduid
+    - *resource
+    - *version

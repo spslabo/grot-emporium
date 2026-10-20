@@ -1,0 +1,54 @@
+# Grafana k8s-monitoring 4.5.3. Cluster-wide infrastructure only.
+# Runtime URLs/passwords come from an existing Secret, never Helm values/history.
+cluster:
+  name: supplied-by-launcher
+global:
+  scrapeInterval: 30s
+destinations:
+  metrics:
+    type: prometheus
+    urlFrom: sys.env("GRAFANA_METRICS_URL")
+    auth:
+      type: basic
+      usernameFrom: sys.env("GRAFANA_METRICS_USER")
+      passwordFrom: sys.env("GRAFANA_METRICS_TOKEN")
+  logs:
+    type: loki
+    urlFrom: sys.env("GRAFANA_LOGS_URL")
+    auth:
+      type: basic
+      usernameFrom: sys.env("GRAFANA_LOGS_USER")
+      passwordFrom: sys.env("GRAFANA_LOGS_TOKEN")
+telemetryServices:
+  kube-state-metrics:
+    deploy: true
+  node-exporter:
+    deploy: true
+clusterMetrics:
+  enabled: true
+  collector: infrastructure
+  cadvisor:
+    enabled: true
+hostMetrics:
+  enabled: true
+  collector: infrastructure
+  linuxHosts:
+    enabled: true
+clusterEvents:
+  enabled: true
+  collector: infrastructure
+# Existing Grot Alloy owns application metrics/logs/traces/profiles/DB O11y.
+# Do not enable podLogs, annotationAutodiscovery or applicationObservability here.
+collectors:
+  infrastructure:
+    fullnameOverride: grot-infrastructure-collector
+    presets: [singleton, service-discovery]
+    alloy:
+      envFrom:
+        - secretRef:
+            name: grot-infrastructure-runtime
+      resources:
+        requests: {cpu: 100m, memory: 256Mi}
+        limits: {memory: 768Mi}
+alloy-operator:
+  ownNamespaceOnly: true

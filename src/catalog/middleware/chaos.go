@@ -53,6 +53,10 @@ func (cc *ChaosController) ChaosMiddleware() gin.HandlerFunc {
 			return
 		}
 
+		if syntheticFault(c) {
+			return
+		}
+
 		cc.mu.RLock()
 		defer cc.mu.RUnlock()
 
@@ -75,6 +79,9 @@ func (cc *ChaosController) ChaosMiddleware() gin.HandlerFunc {
 func (cc *ChaosController) SetupChaosRoutes(r *gin.Engine) {
 	chaos := r.Group("/chaos")
 	{
+		chaos.GET("/capabilities", func(c *gin.Context) {
+			c.JSON(http.StatusOK, gin.H{"request_scoped_faults": true, "max_delay_ms": 5000})
+		})
 		// Enable/disable latency
 		chaos.POST("/latency/:ms", cc.setLatency)
 		chaos.DELETE("/latency", cc.disableLatency)

@@ -35,4 +35,11 @@ springdoc:
   api-docs:
     version: OPENAPI_3_0
 
-otel.sdk.disabled: true
+# Bounded histogram buckets for Prometheus latency/SLO queries.
+management.metrics.distribution.slo.http.server.requests: 5ms,10ms,25ms,50ms,100ms,250ms,500ms,1s,2s,5s,10s
+
+otel.sdk.disabled: ${OTEL_SDK_DISABLED:true}
+logging:
+  structured:
+    format:
+      console: logstash

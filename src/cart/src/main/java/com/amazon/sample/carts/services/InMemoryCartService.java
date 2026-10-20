@@ -64,8 +64,14 @@ public class InMemoryCartService implements CartService {
     int quantity,
     int unitPrice
   ) {
-    CartItem item = new CartItem(itemId, quantity, unitPrice);
+    var existing = this.item(customerId, itemId);
+    if (existing.isPresent()) {
+      CartItem item = existing.get();
+      item.setQuantity(item.getQuantity() + quantity);
+      return item;
+    }
 
+    CartItem item = new CartItem(itemId, quantity, unitPrice);
     this.get(customerId).getItems().add(item);
 
     return item;

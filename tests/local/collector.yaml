@@ -1,0 +1,18 @@
+# Offline integration tests only; deliberately no cloud exporters or credentials.
+receivers:
+  otlp:
+    protocols:
+      http:
+        endpoint: 0.0.0.0:4318
+processors:
+  batch:
+    timeout: 1s
+exporters:
+  file:
+    path: /data/grot-traces.json
+service:
+  pipelines:
+    traces:
+      receivers: [otlp]
+      processors: [batch]
+      exporters: [file]

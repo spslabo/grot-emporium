@@ -1,0 +1,86 @@
+discovery.kubernetes "grot" {
+  role = "pod"
+  namespaces { names = [sys.env("GROT_NAMESPACE")] }
+  selectors {
+    role = "pod"
+    label = "app.kubernetes.io/part-of=grot-emporium"
+  }
+}
+discovery.relabel "metrics" {
+  targets = discovery.kubernetes.grot.targets
+  rule {
+    source_labels = ["__meta_kubernetes_pod_annotation_prometheus_io_scrape"]
+    regex = "true"
+    action = "keep"
+  }
+  rule {
+    source_labels = ["__meta_kubernetes_pod_container_port_name"]
+    regex = "http"
+    action = "keep"
+  }
+  rule {
+    source_labels = ["__meta_kubernetes_pod_annotation_prometheus_io_path"]
+    target_label = "__metrics_path__"
+  }
+  rule {
+    source_labels = ["__meta_kubernetes_pod_label_service_name"]
+    target_label = "service_name"
+  }
+  rule {
+    source_labels = ["__meta_kubernetes_pod_label_service_name"]
+    target_label = "job"
+    replacement = "grot-emporium/$1"
+  }
+  rule {
+    source_labels = ["__meta_kubernetes_namespace"]
+    target_label = "namespace"
+  }
+  rule {
+    target_label = "service_namespace"
+    replacement = "grot-emporium"
+  }
+  rule {
+    target_label = "deployment_environment"
+    replacement = sys.env("DEPLOYMENT_ENVIRONMENT")
+  }
+  rule {
+    target_label = "cluster"
+    replacement = sys.env("GROT_CLUSTER")
+  }
+}
+prometheus.scrape "grot" {
+  targets = discovery.relabel.metrics.output
+  scrape_interval = "15s"
+  forward_to = [prometheus.remote_write.destination.receiver]
+}
+discovery.relabel "logs" {
+  targets = discovery.kubernetes.grot.targets
+  rule {
+    source_labels = ["__meta_kubernetes_pod_label_service_name"]
+    target_label = "service_name"
+  }
+  rule {
+    source_labels = ["__meta_kubernetes_namespace"]
+    target_label = "namespace"
+  }
+  rule {
+    source_labels = ["__meta_kubernetes_pod_container_name"]
+    target_label = "container"
+  }
+  rule {
+    target_label = "service_namespace"
+    replacement = "grot-emporium"
+  }
+  rule {
+    target_label = "deployment_environment"
+    replacement = sys.env("DEPLOYMENT_ENVIRONMENT")
+  }
+  rule {
+    target_label = "cluster"
+    replacement = sys.env("GROT_CLUSTER")
+  }
+}
+loki.source.kubernetes "grot" {
+  targets = discovery.relabel.logs.output
+  forward_to = [loki.write.destination.receiver, loki.process.database_logs.receiver]
+}

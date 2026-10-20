@@ -191,7 +191,7 @@ public class DynamoDBCartService
   @Override
   public void deleteItem(String customerId, String itemId) {
     item(customerId, itemId).ifPresentOrElse(this.table::deleteItem, () ->
-      log.warn("Item missing for delete {} -- {}", customerId, itemId)
+      log.warn("Cart item missing for delete")
     );
   }
 

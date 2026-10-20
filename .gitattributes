@@ -1,0 +1,2 @@
+# Empty context lines in a unified-diff fixture intentionally contain one space.
+tests/fixtures/*.patch whitespace=-blank-at-eol

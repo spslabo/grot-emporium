@@ -1,0 +1,78 @@
+# Shared application images remain unchanged. Only credential delivery differs.
+x-entrypoint: &entrypoint ./runtime-entrypoint.sh:/run/grot/entrypoint.sh:ro
+x-memory: &memory
+  driver: local
+  driver_opts:
+    type: tmpfs
+    device: tmpfs
+    o: size=1m,mode=0755,nosuid,nodev,noexec
+services:
+  runtime:
+    image: alpine:3.21.3
+    command: [sleep, infinity]
+    network_mode: none
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    volumes:
+      - backend-runtime:/secrets/backend
+      - ui-runtime:/secrets/ui
+      - alloy-runtime:/secrets/alloy
+      - gateway-runtime:/secrets/gateway
+      - database-runtime:/secrets/database
+      - orders-db-runtime:/secrets/orders-db
+      - monitor-db-runtime:/secrets/monitor-db
+  postgres:
+    env_file: !reset []
+    environment: { GROT_RUNTIME_ROLES: database }
+    entrypoint: [/bin/sh, /run/grot/entrypoint.sh, /usr/local/bin/docker-entrypoint.sh]
+    volumes: [*entrypoint, "database-runtime:/run/grot/database:ro"]
+  ui:
+    env_file: !reset []
+    environment: { GROT_RUNTIME_ROLES: "backend ui" }
+    entrypoint: [/bin/sh, /run/grot/entrypoint.sh, sh, -c, "exec java $$JAVA_OPTS -jar /app/app.jar"]
+    command: []
+    volumes: [*entrypoint, "backend-runtime:/run/grot/backend:ro", "ui-runtime:/run/grot/ui:ro"]
+  cart:
+    env_file: !reset []
+    environment: { GROT_RUNTIME_ROLES: backend }
+    entrypoint: [/bin/sh, /run/grot/entrypoint.sh, sh, -c, "exec java $$JAVA_OPTS -jar /app/app.jar"]
+    command: []
+    volumes: [*entrypoint, "backend-runtime:/run/grot/backend:ro"]
+  orders:
+    env_file: !reset []
+    environment: { GROT_RUNTIME_ROLES: "backend orders-db" }
+    entrypoint: [/bin/sh, /run/grot/entrypoint.sh, sh, -c, "exec java $$JAVA_OPTS -jar /app/app.jar"]
+    command: []
+    volumes: [*entrypoint, "backend-runtime:/run/grot/backend:ro", "orders-db-runtime:/run/grot/orders-db:ro"]
+  catalog:
+    env_file: !reset []
+    environment: { GROT_RUNTIME_ROLES: backend }
+    entrypoint: [/bin/sh, /run/grot/entrypoint.sh, /app/main]
+    command: []
+    volumes: [*entrypoint, "backend-runtime:/run/grot/backend:ro"]
+  checkout:
+    env_file: !reset []
+    environment: { GROT_RUNTIME_ROLES: backend }
+    entrypoint: [/bin/sh, /run/grot/entrypoint.sh, node, dist/main.js]
+    command: []
+    volumes: [*entrypoint, "backend-runtime:/run/grot/backend:ro"]
+  alloy:
+    env_file: !reset []
+    environment: { GROT_RUNTIME_ROLES: "alloy monitor-db" }
+    entrypoint: [/bin/sh, /run/grot/entrypoint.sh, /bin/alloy]
+    volumes: [*entrypoint, "alloy-runtime:/run/grot/alloy:ro", "monitor-db-runtime:/run/grot/monitor-db:ro"]
+  gateway:
+    env_file: !reset []
+    environment: { GROT_RUNTIME_ROLES: gateway }
+    entrypoint: [/bin/sh, /run/grot/entrypoint.sh, /docker-entrypoint.sh]
+    command: [nginx, -g, "daemon off;"]
+    volumes: [*entrypoint, "gateway-runtime:/run/grot/gateway:ro"]
+volumes:
+  backend-runtime: *memory
+  ui-runtime: *memory
+  alloy-runtime: *memory
+  gateway-runtime: *memory
+  database-runtime: *memory
+  orders-db-runtime: *memory
+  monitor-db-runtime: *memory

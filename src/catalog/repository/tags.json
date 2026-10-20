@@ -1,6 +1,18 @@
 [
-  { "name": "accessories", "displayName": "Accessories" },
-  { "name": "clothing", "displayName": "Clothing" },
-  { "name": "food", "displayName": "Food" },
-  { "name": "vehicles", "displayName": "Vehicles" }
+  {
+    "name": "classics",
+    "displayName": "Classic Grots"
+  },
+  {
+    "name": "crew",
+    "displayName": "On-Call Crew"
+  },
+  {
+    "name": "adventures",
+    "displayName": "Adventurous Grots"
+  },
+  {
+    "name": "rare",
+    "displayName": "Rare Grots"
+  }
 ]

@@ -1,0 +1,9 @@
+# References only. Destination URLs and credentials must never be Helm values.
+collectorSecret: grot-collector-runtime
+gatewaySecret: grot-gateway-runtime
+uiService: ui:80
+collectorImage: grafana/alloy:v1.20.0
+gatewayImage: nginx:1.28-alpine
+destinationId: default
+# SHA-256 connection/tenant fingerprint for retargeting checks; no raw values.
+destinationFingerprint: ""

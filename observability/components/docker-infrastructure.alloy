@@ -1,0 +1,38 @@
+// cAdvisor runs separately with host mounts; only this Compose project's
+// container series are forwarded. No extra ingestion credentials.
+prometheus.scrape "docker_containers" {
+  targets = [{
+    "__address__" = "cadvisor:8080",
+    "job" = "integrations/cadvisor",
+    "instance" = sys.env("GROT_CLUSTER") + "/docker",
+    "cluster" = sys.env("GROT_CLUSTER"),
+  }]
+  scrape_interval = "15s"
+  forward_to = [prometheus.relabel.docker_containers.receiver]
+}
+prometheus.relabel "docker_containers" {
+  forward_to = [prometheus.remote_write.destination.receiver]
+  rule {
+    source_labels = ["__name__", "container_label_com_docker_compose_project"]
+    regex = "(up|scrape_.*);.*|container_.*;" + sys.env("GROT_DOCKER_PROJECT")
+    action = "keep"
+  }
+  rule {
+    source_labels = ["container_label_com_docker_compose_service"]
+    regex = "(.+)"
+    target_label = "service_name"
+    replacement = "grot-$1"
+  }
+}
+// CPU/memory/disk/filesystem metrics from the Linux Docker host. On Docker
+// Desktop this is the Docker Linux VM, not macOS/Windows.
+prometheus.scrape "docker_host" {
+  targets = [{
+    "__address__" = "node-exporter:9100",
+    "job" = "integrations/node_exporter",
+    "instance" = sys.env("GROT_CLUSTER") + "/host",
+    "cluster" = sys.env("GROT_CLUSTER"),
+  }]
+  scrape_interval = "15s"
+  forward_to = [prometheus.remote_write.destination.receiver]
+}

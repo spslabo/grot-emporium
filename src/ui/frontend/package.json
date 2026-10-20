@@ -1,0 +1,15 @@
+{
+  "name": "grot-emporium-browser",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "esbuild src/observability.js --bundle --minify --sourcemap=external --outfile=../src/main/resources/static/assets/js/grot-observability.js",
+    "test": "node --test test/*.test.js"
+  },
+  "dependencies": {
+    "@grafana/faro-web-sdk": "2.12.1",
+    "@grafana/faro-web-tracing": "2.12.1"
+  },
+  "devDependencies": { "esbuild": "0.28.2" }
+}

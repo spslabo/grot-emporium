@@ -12,18 +12,18 @@ data:
   RETAIL_UI_CHAT_PROVIDER: {{ .Values.app.chat.provider }}
   RETAIL_UI_CHAT_MODEL: {{ .Values.app.chat.model }}
   {{- if .Values.app.chat.temperature }}
-  RETAIL_UI_CHAT_TEMPERATURE: {{ .Values.app.chat.temperature }}
+  RETAIL_UI_CHAT_TEMPERATURE: {{ .Values.app.chat.temperature | quote }}
   {{- end }}
   {{- if .Values.app.chat.maxTokens }}
-  RETAIL_UI_CHAT_MAX_TOKENS: {{ .Values.app.chat.maxTokens }}
+  RETAIL_UI_CHAT_MAX_TOKENS: {{ .Values.app.chat.maxTokens | quote }}
   {{- end }}
   {{- if .Values.app.chat.prompt }}
-  RETAIL_UI_CHAT_PROMPT: {{ .Values.app.chat.prompt }}
+  RETAIL_UI_CHAT_PROMPT: {{ .Values.app.chat.prompt | quote }}
   {{- end }}
   {{- if (eq "openai" .Values.app.chat.provider) }}
   RETAIL_UI_CHAT_OPENAI_BASE_URL: {{ .Values.app.chat.openai.baseUrl }}
   {{- if .Values.app.chat.openai.apiKey }}
-  RETAIL_UI_CHAT_OPENAI_API_KEY: {{ .Values.app.chat.openai.apiKey }}
+  {{- fail "Use extraEnv.valueFrom.secretKeyRef for RETAIL_UI_CHAT_OPENAI_API_KEY; API keys must not be stored in a ConfigMap" }}
   {{- end }}
   {{- end }}
   {{- if (eq "bedrock" .Values.app.chat.provider) }}

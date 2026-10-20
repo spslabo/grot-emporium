@@ -29,6 +29,33 @@
   animation: beam 5s infinite;
 }
 
+/* Keep cart artwork square and contained, rather than shrinking in a flex row. */
+.cart-item {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+}
+.cart-item-image {
+  flex: 0 0 100px;
+  width: 100px;
+  height: 100px;
+  object-fit: contain;
+  border-radius: 0.5rem;
+}
+.cart-item-details {
+  flex: 1 1 0;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.cart-item-actions {
+  flex: 0 0 auto;
+  text-align: right;
+}
+@media (max-width: 480px) {
+  .cart-item { gap: 0.75rem; }
+  .cart-item-image { flex-basis: 72px; width: 72px; height: 72px; }
+}
+
 /* Basic markdown text styles */
 .message-text {
   line-height: 1.5;

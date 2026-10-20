@@ -1,0 +1,13 @@
+diff --git a/src/orders/src/main/java/com/amazon/sample/orders/services/OrderService.java b/src/orders/src/main/java/com/amazon/sample/orders/services/OrderService.java
+--- a/src/orders/src/main/java/com/amazon/sample/orders/services/OrderService.java
++++ b/src/orders/src/main/java/com/amazon/sample/orders/services/OrderService.java
+@@ -45,6 +45,9 @@ public class OrderService extends AbstractRelationalEventListener<OrderEntity> {
+   public OrderEntity create(OrderEntity order) {
+     log.debug("Creating order");
+ 
++    // Normalize product identifiers for the numeric SKU integration.
++    order.getItems().forEach(item -> Long.parseLong(item.getProductId()));
++
+     OrderEntity entity = repository.save(order);
+ 
+     return entity;

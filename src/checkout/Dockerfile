@@ -1,8 +1,12 @@
-FROM node:20-alpine AS build
+FROM node:20-bookworm-slim AS build
+# Native profiling dependencies must use glibc, matching the runtime.
+RUN apt-get update && apt-get install -y --no-install-recommends python3 make g++ \
+    && rm -rf /var/lib/apt/lists/*
+RUN corepack enable && corepack prepare yarn@4.11.0 --activate
 WORKDIR /usr/src/app
-COPY --chown=node:node package*.json ./
+COPY --chown=node:node package.json yarn.lock ./
 COPY --chown=node:node . .
-RUN yarn install --frozen-lockfile
+RUN printf 'nodeLinker: node-modules\n' > .yarnrc.yml && yarn install --immutable
 RUN yarn build
 # Prune devDependencies so that only what is required at runtime is copied
 # into the final image.

@@ -21,9 +21,9 @@ describe("testing cart", () => {
       .items()
       .first()
       .find(".item-name")
-      .should("contain.text", "The Quiet Quill");
+      .should("contain.text", "Space Grot");
 
-    cart.subtotal().should("contain.text", "$150");
+    cart.subtotal().should("contain.text", "$25");
   });
 
   it("should open checkout", () => {

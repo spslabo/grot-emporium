@@ -1,0 +1,58 @@
+prometheus.scrape "grot" {
+  scrape_interval = "15s"
+  targets = [
+    {"__address__" = "ui:8080", "__metrics_path__" = "/actuator/prometheus", "service_name" = "grot-ui"},
+    {"__address__" = "cart:8080", "__metrics_path__" = "/actuator/prometheus", "service_name" = "grot-cart"},
+    {"__address__" = "orders:8080", "__metrics_path__" = "/actuator/prometheus", "service_name" = "grot-orders"},
+    {"__address__" = "catalog:8080", "__metrics_path__" = "/metrics", "service_name" = "grot-catalog"},
+    {"__address__" = "checkout:8080", "__metrics_path__" = "/metrics", "service_name" = "grot-checkout"},
+  ]
+  forward_to = [prometheus.relabel.identity.receiver]
+}
+prometheus.relabel "identity" {
+  forward_to = [prometheus.remote_write.destination.receiver]
+  rule {
+    target_label = "service_namespace"
+    replacement = "grot-emporium"
+  }
+  rule {
+    target_label = "deployment_environment"
+    replacement = sys.env("DEPLOYMENT_ENVIRONMENT")
+  }
+  rule {
+    target_label = "cluster"
+    replacement = sys.env("GROT_CLUSTER")
+  }
+  rule {
+    source_labels = ["service_name"]
+    target_label = "job"
+    replacement = "grot-emporium/$1"
+  }
+}
+// Docker sends only these services' logs over loopback syslog. No Docker socket.
+loki.relabel "syslog" {
+  forward_to = []
+  rule {
+    source_labels = ["__syslog_message_app_name"]
+    regex = "grot-(ui|cart|orders|catalog|checkout|postgres)"
+    action = "keep"
+  }
+  rule {
+    source_labels = ["__syslog_message_app_name"]
+    target_label = "service_name"
+  }
+}
+loki.source.syslog "grot" {
+  listener {
+    address = "0.0.0.0:1514"
+    protocol = "tcp"
+    max_message_length = 65536
+    labels = {
+      "service_namespace" = "grot-emporium",
+      "deployment_environment" = sys.env("DEPLOYMENT_ENVIRONMENT"),
+      "cluster" = sys.env("GROT_CLUSTER"),
+    }
+  }
+  relabel_rules = loki.relabel.syslog.rules
+  forward_to = [loki.write.destination.receiver, loki.process.database_logs.receiver]
+}

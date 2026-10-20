@@ -1,0 +1,25 @@
+# Offline test only: private temporary files and a local TLS sink, no cloud export.
+services:
+  sink:
+    image: python:3.12-alpine
+    command: [python, /test/destination_sink.py]
+    volumes:
+      - ../../tests/telemetry:/test:ro
+      - ${GROT_TEST_CONFIG_DIR:?}:/certs:ro
+  alloy:
+    environment:
+      SSL_CERT_FILE: /certs/cert.pem
+    volumes:
+      - ${GROT_TEST_CONFIG_DIR:?}/cert.pem:/certs/cert.pem:ro
+    depends_on: [sink]
+  gateway:
+    volumes:
+      - ${GROT_TEST_CONFIG_DIR:?}/cert.pem:/etc/ssl/certs/ca-certificates.crt:ro
+  probe:
+    image: python:3.12-alpine
+    profiles: [test]
+    volumes:
+      - ../../tests/telemetry:/test:ro
+      - ${GROT_TEST_CONFIG_DIR:?}/cert.pem:/certs/cert.pem:ro
+    environment:
+      SSL_CERT_FILE: /certs/cert.pem

@@ -26,6 +26,9 @@ spec:
       {{- end }}
       labels:
         {{- include "checkout.selectorLabels" . | nindent 8 }}
+        {{- with .Values.podLabels }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
     spec:
       {{- with .Values.topologySpreadConstraints }}
       topologySpreadConstraints:
@@ -40,9 +43,26 @@ spec:
         {{- toYaml .Values.podSecurityContext | nindent 8 }}
       containers:
         - name: {{ "checkout" }}
+          {{- with .Values.extraEnv }}
+          env:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
           envFrom:
+            {{- with .Values.extraEnvFrom }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
             - configMapRef:
                 name: {{ include "checkout.configMapName" . }}
+            {{- with .Values.global }}
+            {{- with .grotBackendSecret }}
+            - secretRef:
+                name: {{ . | quote }}
+            {{- end }}
+            {{- end }}
+            {{- with .Values.runtimeSecret }}
+            - secretRef:
+                name: {{ . | quote }}
+            {{- end }}
           securityContext:
             {{- toYaml .Values.securityContext | nindent 12 }}
           image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.Version }}"

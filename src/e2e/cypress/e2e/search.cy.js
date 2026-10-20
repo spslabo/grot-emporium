@@ -35,11 +35,11 @@ describe("testing catalog search", () => {
     it("should return results for a valid keyword", () => {
       catalog.visit();
 
-      cy.get('input[name="keyword"]').type("shoe");
+      cy.get('input[name="keyword"]').type("grot");
       cy.get('button[type="submit"]').contains("Search").click();
 
       cy.url().should("include", "/catalog/search");
-      cy.url().should("include", "keyword=shoe");
+      cy.url().should("include", "keyword=grot");
 
       cy.get(".product-card").should("have.length.greaterThan", 0);
     });
@@ -47,7 +47,7 @@ describe("testing catalog search", () => {
     it("should show result count after searching", () => {
       catalog.visit();
 
-      cy.get('input[name="keyword"]').type("shoe");
+      cy.get('input[name="keyword"]').type("grot");
       cy.get('button[type="submit"]').contains("Search").click();
 
       cy.contains("Showing results for").should("be.visible");
@@ -66,7 +66,7 @@ describe("testing catalog search", () => {
     it("should clear search and return to catalog", () => {
       catalog.visit();
 
-      cy.get('input[name="keyword"]').type("shoe");
+      cy.get('input[name="keyword"]').type("grot");
       cy.get('button[type="submit"]').contains("Search").click();
 
       cy.contains("Clear").click();
@@ -78,7 +78,7 @@ describe("testing catalog search", () => {
     it("should hide sidebar when showing search results", () => {
       catalog.visit();
 
-      cy.get('input[name="keyword"]').type("shoe");
+      cy.get('input[name="keyword"]').type("grot");
       cy.get('button[type="submit"]').contains("Search").click();
 
       cy.contains("Categories").should("not.exist");

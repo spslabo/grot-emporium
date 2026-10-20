@@ -1,180 +1,164 @@
-![Banner](./docs/images/banner.png)
+# Grot Emporium
 
-<div align="center">
-  <div align="center">
+A nine-product Grot squishy store with Java, Go and Node services, instrumented for **Grafana Cloud**. Based on the [AWS retail store sample](https://github.com/aws-containers/retail-store-sample-app).
 
-[![Stars](https://img.shields.io/github/stars/aws-containers/retail-store-sample-app)](Stars)
-![GitHub License](https://img.shields.io/github/license/aws-containers/retail-store-sample-app?color=green)
-![Dynamic JSON Badge](https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fraw.githubusercontent.com%2Faws-containers%2Fretail-store-sample-app%2Frefs%2Fheads%2Fmain%2F.release-please-manifest.json&query=%24%5B%22.%22%5D&label=release)
-![GitHub Release Date](https://img.shields.io/github/release-date/aws-containers/retail-store-sample-app)
+**Grafana Cloud is required for the observability demo.** Cloud applications such as Application Observability require the corresponding products and permissions in your stack; this repository does not install them.
 
-  </div>
+## Dependencies
 
-  <strong>
-  <h2>AWS Containers Retail Sample</h2>
-  </strong>
-</div>
+| Dependency | Required for |
+|---|---|
+| Python 3 | Launcher and verification commands |
+| Docker with Compose 2.30+ | Docker deployment and local browser/shopping probes |
+| kubectl and Helm 3/4 | Kubernetes deployment; requires an existing cluster |
+| [gcx](https://github.com/grafana/gcx) | Grafana Cloud query checks: `verify --grafana-context` and `verify-cloud` |
+| Grafana Cloud stack and ingestion credentials | Telemetry export |
 
-This is a sample application designed to illustrate various concepts related to containers on AWS. It presents a sample retail store application including a product catalog, shopping cart and checkout.
+Install [gcx](https://github.com/grafana/gcx), then authenticate a named Cloud context:
 
-It provides:
-
-- A demo store-front application with themes, pages to show container and application topology information, generative AI chat bot and utility functions for experimentation and demos.
-- An optional distributed component architecture using various languages and frameworks
-- A variety of different persistence backends for the various components like MariaDB (or MySQL), DynamoDB and Redis
-- The ability to run in different container orchestration technologies like Docker Compose, Kubernetes etc.
-- Pre-built container images for both x86-64 and ARM64 CPU architectures
-- All components instrumented for Prometheus metrics and OpenTelemetry OTLP tracing
-- Support for Istio on Kubernetes
-- Load generator which exercises all of the infrastructure
-
-See the [features documentation](./docs/features.md) for more information.
-
-**This project is intended for educational purposes only and not for production use**
-
-![Screenshot](/docs/images/screenshot.png)
-
-## Application Architecture
-
-The application has been deliberately over-engineered to generate multiple de-coupled components. These components generally have different infrastructure dependencies, and may support multiple "backends" (example: Carts service supports MongoDB or DynamoDB).
-
-![Architecture](/docs/images/architecture.png)
-
-| Component                  | Language | Container Image                                                             | Helm Chart                                                                        | Description                             |
-| -------------------------- | -------- | --------------------------------------------------------------------------- | --------------------------------------------------------------------------------- | --------------------------------------- |
-| [UI](./src/ui/)            | Java     | [Link](https://gallery.ecr.aws/aws-containers/retail-store-sample-ui)       | [Link](https://gallery.ecr.aws/aws-containers/retail-store-sample-ui-chart)       | Store user interface                    |
-| [Catalog](./src/catalog/)  | Go       | [Link](https://gallery.ecr.aws/aws-containers/retail-store-sample-catalog)  | [Link](https://gallery.ecr.aws/aws-containers/retail-store-sample-catalog-chart)  | Product catalog API                     |
-| [Cart](./src/cart/)        | Java     | [Link](https://gallery.ecr.aws/aws-containers/retail-store-sample-cart)     | [Link](https://gallery.ecr.aws/aws-containers/retail-store-sample-cart-chart)     | User shopping carts API                 |
-| [Orders](./src/orders)     | Java     | [Link](https://gallery.ecr.aws/aws-containers/retail-store-sample-orders)   | [Link](https://gallery.ecr.aws/aws-containers/retail-store-sample-orders-chart)   | User orders API                         |
-| [Checkout](./src/checkout) | Node     | [Link](https://gallery.ecr.aws/aws-containers/retail-store-sample-checkout) | [Link](https://gallery.ecr.aws/aws-containers/retail-store-sample-checkout-chart) | API to orchestrate the checkout process |
-
-## Quickstart
-
-The following sections provide quickstart instructions for various platforms.
-
-### Docker
-
-This deployment method will run the application as a single container on your local machine using `docker`.
-
-Pre-requisites:
-
-- Docker installed locally
-
-Run the container:
-
-```
-docker run -it --rm -p 8888:8080 public.ecr.aws/aws-containers/retail-store-sample-ui:1.0.0
+```sh
+gcx login demo-cloud
+gcx --context demo-cloud config check
 ```
 
-Open the frontend in a browser window:
+`gcx login demo-cloud` creates a named context (or reauthenticates an existing one). Follow the prompts to select your Grafana Cloud stack and sign in. Its query credentials are separate from the telemetry ingestion token.
 
-```
-http://localhost:8888
-```
+`--grafana-context demo-cloud` tells the helper to run its read-only queries with `gcx --context demo-cloud`. This selects the stack to query, independently of the deployment alias; it does not change the app's telemetry destination.
 
-To stop the container in `docker` use Ctrl+C.
+Kubernetes installation runs local verification automatically; standalone verification and Cloud queries use fixed checks, with **no AI/model dependency, model credentials or model calls**. You can verify ingestion independently in Grafana Explore, the Cloud applications, or with your own queries and tooling. See [verification and limits](deploy/README.md#verification-and-limits).
 
-### Docker Compose
+Add **`--verbose`** (or `-v`) to any command to see validation, command activity and timings throughout—not just during waits. Credentials and captured command output remain hidden.
 
-This deployment method will run the application on your local machine using `docker-compose`.
+## Docker
 
-Pre-requisites:
-
-- Docker installed locally
-
-Download the latest Docker Compose file and use `docker compose` to run the application containers:
-
-```
-wget https://github.com/aws-containers/retail-store-sample-app/releases/latest/download/docker-compose.yaml
-
-DB_PASSWORD='<some password>' docker compose --file docker-compose.yaml up
+```sh
+./grot docker customer-demo
+./grot verify customer-demo --grafana-context demo-cloud
+./grot stop customer-demo
 ```
 
-Open the frontend in a browser window:
+Open `http://localhost:8080`. Docker includes **cAdvisor container metrics and Linux host CPU/memory/disk metrics**, scraped by Alloy. On a VM these describe the Linux VM; on Docker Desktop they describe Docker's Linux VM, not macOS/Windows. cAdvisor needs privileged host/socket access. Hidden prompts collect ingestion settings. Credentials are held in memory-backed runtime files, not host profiles or image layers. Stop removes this demo's containers, credentials and telemetry buffers.
 
-```
-http://localhost:8888
-```
+## Kubernetes quick — including k3s
 
-To stop the containers in `docker compose` use Ctrl+C. To delete all the containers and related resources run:
+Requires an existing cluster, kubectl, Helm 3/4 and published Grot images. Run from this repository. **Kubernetes Monitoring is included by default** (cluster/workload/node metrics, kubelet cAdvisor and events); installation requires cluster-admin-level permissions. If monitoring already exists, add `--skip-k8s-monitoring` to avoid a duplicate.
 
-```
-docker compose -f docker-compose.yaml down
-```
+**Choose your cluster:** kubectl normally reads `~/.kube/config`. If your administrator/provider supplied a separate connection file, select it first:
 
-### Kubernetes
-
-This deployment method will run the application in an existing Kubernetes cluster.
-
-Pre-requisites:
-
-- Kubernetes cluster
-- `kubectl` installed locally
-
-Use `kubectl` to run the application:
-
-```
-kubectl apply -f https://github.com/aws-containers/retail-store-sample-app/releases/latest/download/kubernetes.yaml
-kubectl wait --for=condition=available deployments --all
+```sh
+# Only for a separate connection file; replace this path with yours:
+export KUBECONFIG="/path/to/your/kubeconfig"
 ```
 
-Get the URL for the frontend load balancer like so:
-
-```
-kubectl get svc ui
-```
-
-To remove the application use `kubectl` again:
-
-```
-kubectl delete -f https://github.com/aws-containers/retail-store-sample-app/releases/latest/download/kubernetes.yaml
+```sh
+kubectl config get-contexts
+export CONTEXT="name-from-the-NAME-column"
+kubectl --context "$CONTEXT" get namespaces
 ```
 
-### Terraform
+If no contexts appear, obtain cluster access from your administrator/provider. For an expired AWS SSO session, run `aws sso login --profile YOUR_PROFILE`. Keep the same terminal for deployment and verification.
 
-The following options are available to deploy the application using Terraform:
+**Choose your images:** find the repository and tag in your fork's GitHub **Packages**, or the successful **Publish Grot images** workflow run. All five app images must have the same tag. The prefix excludes the service name; the version is the published commit SHA. These are not credentials.
 
-| Name                                             | Description                                                                                                     |
-| ------------------------------------------------ | --------------------------------------------------------------------------------------------------------------- |
-| [Amazon EKS](./terraform/eks/default/)           | Deploys the application to Amazon EKS using other AWS services for dependencies, such as RDS, DynamoDB etc.     |
-| [Amazon EKS (Minimal)](./terraform/eks/minimal/) | Deploys the application to Amazon EKS using in-cluster dependencies instead of RDS, DynamoDB etc.               |
-| [Amazon ECS](./terraform/ecs/default/)           | Deploys the application to Amazon ECS using other AWS services for dependencies, such as RDS, DynamoDB etc.     |
-| [AWS App Runner](./terraform/apprunner/)         | Deploys the application to AWS App Runner using other AWS services for dependencies, such as RDS, DynamoDB etc. |
+```sh
+export IMAGE_PREFIX="ghcr.io/YOUR_OWNER/grot-emporium"
+export VERSION="PUBLISHED_COMMIT_SHA"
 
-## Security
+./grot k8s customer-demo --mode quick --context "$CONTEXT" \
+  --image-prefix "$IMAGE_PREFIX" --image-tag "$VERSION"
+./grot verify customer-demo --context "$CONTEXT" --namespace grot-customer-demo
+./grot open customer-demo --context "$CONTEXT"  # Reopen browser access later
+./grot stop customer-demo --context "$CONTEXT" --namespace grot-customer-demo
+```
 
-See [CONTRIBUTING](CONTRIBUTING.md#security-issue-notifications) for more information.
+Kubernetes deployment prints progress, then **automatically verifies shopping, browser, telemetry transport and database collection**. If verification fails, it stops before browser access. On success, interactive deployment starts a local tunnel, prints the deployment summary and URL, and opens **http://localhost:8080**. Keep the terminal running while browsing; **Ctrl+C closes only the tunnel**. Then run verify/stop, or use another terminal with the same `KUBECONFIG`. Use `--no-open` to skip browser access or `--port 8081` to choose another local port (also allow that origin in Faro). Noninteractive/`--settings-stdin` deployments don't open a tunnel.
 
-## License
+`customer-demo` is your deployment alias (**destination**), not a URL. The **context** selects the cluster connection; the **namespace** defaults to `grot-<destination>`. The launcher prompts for telemetry settings, prints progress and exact verify/access/stop commands. Add `--grafana-context demo-cloud` to verification for optional Cloud indexing checks.
 
-This project is licensed under the MIT-0 License.
+For Frontend Observability, allow `http://localhost:8080` and `http://grot-gateway` in your Faro application, then paste its collector URL into the script's Faro prompt. See [endpoint formats](deploy/README.md#connection-settings). Cleanup retains the namespace and externally managed Secrets.
 
-This package depends on and may incorporate or retrieve a number of third-party
-software packages (such as open source packages) at install-time or build-time
-or run-time ("External Dependencies"). The External Dependencies are subject to
-license terms that you must accept in order to use this package. If you do not
-accept all of the applicable license terms, you should not use this package. We
-recommend that you consult your company’s open source approval policy before
-proceeding.
+Complete the Kubernetes Monitoring app's **recording/alert-rule installation once per Grafana Cloud stack**; Helm installs collectors, not those Cloud-side rules. Data and product views may take a few minutes to populate.
 
-Provided below is a list of External Dependencies and the applicable license
-identification as indicated by the documentation associated with the External
-Dependencies as of Amazon's most recent review.
+Shared monitoring lives in `grot-monitoring` and survives app teardown. Add it to an already-running Grot without redeploying the app:
 
-THIS INFORMATION IS PROVIDED FOR CONVENIENCE ONLY. AMAZON DOES NOT PROMISE THAT
-THE LIST OR THE APPLICABLE TERMS AND CONDITIONS ARE COMPLETE, ACCURATE, OR
-UP-TO-DATE, AND AMAZON WILL HAVE NO LIABILITY FOR ANY INACCURACIES. YOU SHOULD
-CONSULT THE DOWNLOAD SITES FOR THE EXTERNAL DEPENDENCIES FOR THE MOST COMPLETE
-AND UP-TO-DATE LICENSING INFORMATION.
+```sh
+./grot infrastructure customer-demo --context "$CONTEXT"
+# Explicitly remove shared monitoring when finished:
+./grot infrastructure customer-demo --context "$CONTEXT" --remove
+```
 
-YOUR USE OF THE EXTERNAL DEPENDENCIES IS AT YOUR SOLE RISK. IN NO EVENT WILL
-AMAZON BE LIABLE FOR ANY DAMAGES, INCLUDING WITHOUT LIMITATION ANY DIRECT,
-INDIRECT, CONSEQUENTIAL, SPECIAL, INCIDENTAL, OR PUNITIVE DAMAGES (INCLUDING
-FOR ANY LOSS OF GOODWILL, BUSINESS INTERRUPTION, LOST PROFITS OR DATA, OR
-COMPUTER FAILURE OR MALFUNCTION) ARISING FROM OR RELATING TO THE EXTERNAL
-DEPENDENCIES, HOWEVER CAUSED AND REGARDLESS OF THE THEORY OF LIABILITY, EVEN
-IF AMAZON HAS BEEN ADVISED OF THE POSSIBILITY OF SUCH DAMAGES. THESE LIMITATIONS
-AND DISCLAIMERS APPLY EXCEPT TO THE EXTENT PROHIBITED BY APPLICABLE LAW.
+## Kubernetes long-term
 
-MariaDB Community License - [LICENSE](https://mariadb.com/kb/en/mariadb-licenses/)
-MySQL Community Edition - [LICENSE](https://github.com/mysql/mysql-server/blob/8.0/LICENSE)
+Supply the five runtime Secrets (including database credentials) through your team's secret-management tooling:
+
+```sh
+./grot k8s customer-demo --mode long-term --context "$CONTEXT" \
+  --image-prefix "$IMAGE_PREFIX" --image-tag "$VERSION"
+```
+
+Uses the same charts without modifying or deleting external Secrets. See the [deployment guide](deploy/README.md) for Secret keys, image publication, browser access, rotation and cleanup.
+
+## Continuous demo traffic
+
+k6 is bundled. Deployment verification is brief; **start sustained traffic explicitly** to keep app/DB telemetry and Faro active:
+
+```sh
+./grot traffic customer-demo start --context "$CONTEXT" --grafana-context demo-cloud --preset low --duration 1h
+./grot traffic customer-demo status --context "$CONTEXT"
+./grot traffic customer-demo stop --context "$CONTEXT"
+# Docker / Linux VM: omit --context.
+```
+
+| Preset | Shopping journeys/min | Real browser journeys/min |
+|---|---:|---:|
+| low (default) | 6 | 1 |
+| medium | 30 | 2 |
+| high (opt-in) | 120 | 4 |
+
+Each journey browses products, uses the cart and creates a synthetic order—**these are journeys, not requests/second**. Override with `--rate 15 --browser-rate 2`; use `--browser-rate 0` for HTTP-only traffic (no browser-generated Faro). Stop before changing settings. Runs are bounded (default 1h, launcher maximum 24h; Cloud project limits may be lower); app teardown also stops the runner. Startup prints the k6 logs command; final thresholds report failures/dropped iterations. App telemetry uses existing Alloy. **k6 results stream to Grafana Cloud k6 by default**, while execution stays inside your private cluster/Compose network. Supply an authenticated `gcx` context with `--grafana-context`; select `--k6-project ID` if it has multiple projects. The launcher obtains k6-specific authentication without printing tokens, verifies Cloud registration and prints the run URL. Cloud k6 usage may be billable, including local execution. Use `--local-only` explicitly for logs-only tests. More traffic grows the disposable database.
+
+For longer Kubernetes demos, add **`--repeat`**. A CronJob starts the next bounded run on an available minute boundary after the previous run ends (`concurrencyPolicy: Forbid`); runs never overlap. It continues until `traffic stop` or app teardown, so Cloud k6 usage/billing continues too. Docker currently supports single bounded runs only.
+
+### Guided LLM + Agent Observability setup
+
+For an existing Kubernetes demo with a current UI image:
+
+```sh
+./grot agento11y my-demo --context my-kube-context \
+  --capture-content --verify --allow-paid-ai --grafana-context my-stack
+```
+
+The wizard configures Bedrock/OpenAI, collects missing keys privately, configures content capture and labels, rolls UI, and optionally verifies one chat in Cloud. Existing credentials are reused. `--capture-content` consents to exporting **all demo chat content** to Agent Observability (not traces). Omit the last three flags to configure without a paid model request. [Provider/IAM wiring and image upgrade instructions](docs/optional-ai-chat.md#recommended-guided-kubernetes-setup).
+
+### Optional paid chat traffic
+
+After enabling a real chatbot provider and verifying Agent Observability ingestion, add `--chat-every 5m --chat-max-requests 60 --allow-paid-ai` to traffic start. This makes at most 60 synthetic chat requests per run, with one model request in flight at a time; the recurring-run budget resets each run. It is **off by default** and does not scale with low/medium/high presets. Prompts/responses are not printed in k6 logs; conversation IDs are logged for correlation. Model charges are separate from Cloud k6 usage. See [chat setup](docs/optional-ai-chat.md).
+
+For occasional **labelled conversation failures**, enable `GROT_CHAT_SYNTHETIC_FAULTS_ENABLED=true` in the UI role and use `--chat-error-every 10`. An updated UI image is required. Every tenth synthetic request returns HTTP 503 and exports an errored generation/trace without calling Bedrock; normal chats are unchanged. These expected 503s pass the k6 fault check and increment `chat_injected_errors`; unexpected failures still fail checks. The header is a private-demo facility, not authentication.
+
+### Optional synthetic failures
+
+After deploying the **updated catalog image**, add `--failures` to traffic start:
+
+```sh
+./grot traffic customer-demo start --context "$CONTEXT" --grafana-context demo-cloud \
+  --preset low --duration 1h --failures
+# Optional: --error-percent 1 --slow-percent 5 --delay-ms 2000 --fault-rate 60
+```
+
+This adds **60 catalog probes/minute**, with 1% real HTTP 500s and 5% server-side 2-second delays, distributed over each 100 probes. Percentages apply to these probes, **not all shopping requests**. Normal shopping/browser journeys remain unchanged. Logs/spans are labeled synthetic; k6 separates expected injected failures from unexpected failures. Old catalog images are rejected by a capability check. Faults are request-local: stopping traffic leaves no fault settings behind; no pods, database connections or health checks are disabled. Stop the existing traffic run before changing settings. Defaults remain healthy.
+
+## Features and configuration
+
+- Prometheus metrics, correlated logs, OTLP traces, Java/Go/Node profiles and Faro browser telemetry.
+- Kubernetes Monitoring on Kubernetes; cAdvisor + Linux host metrics on Docker/VMs. Existing ingestion credentials are reused.
+- **PostgreSQL orders database and [Database Observability](docs/database-observability.md) enabled by default**: database health, query performance, query details, schema and available plans/wait samples.
+- [Optional AI shopping assistant and Agent Observability](docs/optional-ai-chat.md).
+- [Verification and Cloud query checks](deploy/README.md#verification-and-limits).
+- [Maintainer tests and deliberate failure scenario](tests/local/README.md).
+
+**Synthetic data only.** Orders use disposable PostgreSQL storage; other services retain lightweight storage. Database recreation resets orders; even Kubernetes long-term credential mode is not durable database storage. No real payments are processed. Model calls require explicit configuration. Automation routing is plan-only; launch commands do not post tickets, page production teams, merge PRs or deploy fixes.
+
+Host/Docker/cluster administrators can access runtime credentials. Protect host swap/snapshots, and configure Kubernetes Secret encryption and access controls as described in the deployment guide.
+
+Original [upstream documentation](README.upstream.md), attribution and [license](LICENSE) are retained.

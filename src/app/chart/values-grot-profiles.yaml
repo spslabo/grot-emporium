@@ -1,0 +1,29 @@
+# Optional profiling. The Grot ConfigMap defaults to the internal Alloy receiver;
+# override PYROSCOPE_SERVER_ADDRESS through an existing backend runtime Secret.
+ui:
+  profiling:
+    enabled: true
+cart:
+  profiling:
+    enabled: true
+orders:
+  profiling:
+    enabled: true
+catalog:
+  extraEnv:
+    - { name: OTEL_SERVICE_NAME, value: grot-catalog }
+    - name: POD_UID
+      valueFrom:
+        fieldRef: { fieldPath: metadata.uid }
+    - name: OTEL_RESOURCE_ATTRIBUTES
+      value: "$(GROT_RESOURCE_ATTRIBUTES),service.instance.id=$(POD_UID),k8s.pod.uid=$(POD_UID)"
+    - { name: PYROSCOPE_ENABLED, value: "true" }
+checkout:
+  extraEnv:
+    - { name: OTEL_SERVICE_NAME, value: grot-checkout }
+    - name: POD_UID
+      valueFrom:
+        fieldRef: { fieldPath: metadata.uid }
+    - name: OTEL_RESOURCE_ATTRIBUTES
+      value: "$(GROT_RESOURCE_ATTRIBUTES),service.instance.id=$(POD_UID),k8s.pod.uid=$(POD_UID)"
+    - { name: PYROSCOPE_ENABLED, value: "true" }

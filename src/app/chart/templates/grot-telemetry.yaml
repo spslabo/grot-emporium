@@ -1,0 +1,23 @@
+{{- if .Values.grotTelemetry }}
+{{- if .Values.grotTelemetry.endpoint }}
+{{- fail "Set OTEL_EXPORTER_OTLP_ENDPOINT in an existing runtime Secret, not Helm values" }}
+{{- end }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: grot-emporium-telemetry
+  labels:
+    app.kubernetes.io/part-of: grot-emporium
+data:
+  OTEL_SDK_DISABLED: {{ ternary "false" "true" .Values.grotTelemetry.enabled | quote }}
+  OTEL_EXPORTER_OTLP_ENDPOINT: "http://alloy:4318"
+  PYROSCOPE_SERVER_ADDRESS: "http://alloy:4040"
+  OTEL_EXPORTER_OTLP_PROTOCOL: "http/protobuf"
+  OTEL_PROPAGATORS: "tracecontext,baggage"
+  OTEL_METRICS_EXPORTER: "none"
+  OTEL_LOGS_EXPORTER: "none"
+  OTEL_RESOURCE_PROVIDERS_AWS_ENABLED: "false"
+  GROT_RESOURCE_ATTRIBUTES: {{ printf "service.namespace=grot-emporium,deployment.environment.name=%s,deployment.environment=%s,service.version=%s,k8s.namespace.name=%s,k8s.cluster.name=%s" .Values.grotTelemetry.environment .Values.grotTelemetry.environment .Values.grotTelemetry.version .Release.Namespace .Values.grotTelemetry.cluster | quote }}
+  DEPLOYMENT_ENVIRONMENT: {{ .Values.grotTelemetry.environment | quote }}
+  SERVICE_VERSION: {{ .Values.grotTelemetry.version | quote }}
+{{- end }}

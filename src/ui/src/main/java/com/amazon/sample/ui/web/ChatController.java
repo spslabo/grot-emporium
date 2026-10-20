@@ -18,6 +18,11 @@
 
 package com.amazon.sample.ui.web;
 
+import com.amazon.sample.ui.chat.ChatTelemetry;
+import java.util.UUID;
+import jakarta.validation.Valid;
+import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.Size;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -39,8 +44,23 @@ public class ChatController {
 
   private static class ChatRequest {
 
+    private static final int MAX_MESSAGE_LENGTH = 2000;
+
     @JsonProperty("message")
+    @NotBlank
+    @Size(max = MAX_MESSAGE_LENGTH)
     private String message;
+
+    @JsonProperty("conversationId")
+    private String conversationId;
+
+    public String safeConversationId() {
+      try {
+        return UUID.fromString(conversationId).toString();
+      } catch (RuntimeException ignored) {
+        return UUID.randomUUID().toString();
+      }
+    }
 
     public String getMessage() {
       return message;
@@ -70,22 +90,37 @@ public class ChatController {
   @Value("${retail.ui.chat.prompt}")
   private String systemPrompt;
 
+  @Value("${GROT_CHAT_SYNTHETIC_FAULTS_ENABLED:false}")
+  private boolean syntheticFaultsEnabled;
+
   @Autowired
   private ChatClient client;
 
+  @Autowired
+  private ChatTelemetry telemetry;
+
   @PostMapping("/submit")
   public Flux<ServerSentEvent<String>> streamEvents(
-    @RequestBody ChatRequest request
+    @Valid @RequestBody ChatRequest request,
+    @org.springframework.web.bind.annotation.RequestHeader(value = "X-Grot-Synthetic-Fault", defaultValue = "") String fault
   ) {
     var objectMapper = new ObjectMapper();
 
-    return this.client.prompt(request.getMessage())
+    if (syntheticFaultsEnabled && "error".equals(fault)) {
+      return telemetry.observe(Flux.<org.springframework.ai.chat.model.ChatResponse>error(
+        new org.springframework.web.server.ResponseStatusException(org.springframework.http.HttpStatus.SERVICE_UNAVAILABLE,
+          "Injected synthetic chat failure (not a Bedrock outage)")), request.safeConversationId(), true, systemPrompt, request.getMessage())
+        .map(ignored -> ServerSentEvent.<String>builder().data("").build());
+    }
+
+    return telemetry.observe(this.client.prompt(request.getMessage())
       .system(this.systemPrompt)
       .stream()
-      .content()
+      .chatResponse(), request.safeConversationId(), false, systemPrompt, request.getMessage())
+      .filter(c -> c.getResult() != null && c.getResult().getOutput() != null && c.getResult().getOutput().getText() != null)
       .map(c -> {
         try {
-          var response = new ResponseMessage(c);
+          var response = new ResponseMessage(c.getResult().getOutput().getText());
           return ServerSentEvent.<String>builder()
             .data(objectMapper.writeValueAsString(response))
             .build();
