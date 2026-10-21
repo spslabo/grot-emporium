@@ -8,6 +8,29 @@ from scripts.grot_config import ROOT
 
 
 class PublicationInstructionsTests(unittest.TestCase):
+    def test_release_uses_ghcr_without_upstream_aws_or_bot_pr_permissions(self):
+        directory = ROOT / '.github/workflows'
+        workflows = {p.name: yaml.load(p.read_text(), Loader=yaml.BaseLoader)
+                     for p in directory.iterdir() if p.suffix in ('.yaml', '.yml')}
+        for name, workflow in workflows.items():
+            text = (directory / name).read_text()
+            self.assertNotIn('googleapis/release-please-action', text)
+            self.assertNotIn('secrets.AWS_ROLE_ARN', text)
+            self.assertNotIn('secrets.AWS_ECR_REPOSITORY', text)
+            for job in workflow['jobs'].values():
+                reference = job.get('uses', '')
+                if reference.startswith('./'):
+                    self.assertTrue((ROOT / reference).is_file(), reference)
+        publication = workflows['grot-publish.yml']
+        self.assertEqual({'workflow_dispatch', 'push'}, set(publication['on']))
+        self.assertEqual({'tags': ['grot-v*']}, publication['on']['push'])
+        self.assertEqual({'contents': 'read'}, publication['permissions'])
+        self.assertEqual({'contents': 'read', 'packages': 'write'}, publication['jobs']['publish']['permissions'])
+        steps = publication['jobs']['publish']['steps']
+        build = next(step for step in steps if step.get('uses', '').startswith('docker/build-push-action@'))
+        self.assertEqual('linux/amd64,linux/arm64', build['with']['platforms'])
+        self.assertEqual('true', build['with']['push'])
+
     def test_kubernetes_ci_requires_readiness_and_keeps_failure_diagnostics(self):
         steps = yaml.safe_load((ROOT / '.github/workflows/e2e-test.yml').read_text())['jobs']['kubernetes']['steps']
         deploy = next(step['run'] for step in steps if step.get('name') == 'Deploy')
