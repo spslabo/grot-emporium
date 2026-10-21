@@ -27,9 +27,8 @@ jobs:
           sudo bash oss/run.sh -s $COMPONENT_NAME --root
 
       - name: Create Pull Request
-        uses: peter-evans/create-pull-request@v4
+        uses: peter-evans/create-pull-request@v7
         with:
-          add-path: src/**/ATTRIBUTION.md
           branch: attribution-updates-${{ matrix.component }}
           title: "chore(deps): Update OSS attribution for ${{ matrix.component }}"
           commit-message: "chore: Updating OSS attribution for ${{ matrix.component }}"
