@@ -118,6 +118,7 @@ jobs:
           kind load docker-image public.ecr.aws/aws-containers/retail-store-sample-checkout:$IMAGE_TAG
           kind load docker-image public.ecr.aws/aws-containers/retail-store-sample-orders:$IMAGE_TAG
           kind load docker-image public.ecr.aws/aws-containers/retail-store-sample-ui:$IMAGE_TAG
+          bash tests/kubernetes/preload-e2e-images.sh kind
 
           docker system prune --all --force
 
@@ -125,7 +126,8 @@ jobs:
         env:
           IMAGE_TAG: e2e
         run: |
-          NODE_PORT=30000 helmfile apply -f src/app/helmfile.yaml --wait --skip-diff-on-install
+          NODE_PORT=30000 helmfile apply -f src/app/helmfile.yaml --wait --skip-diff-on-install \
+            --values "$PWD/tests/kubernetes/e2e-offline-images.yaml"
 
           kubectl wait --for=condition=Ready pod -l app.kubernetes.io/owner=retail-store-sample --timeout 180s
 
