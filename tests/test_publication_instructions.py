@@ -8,6 +8,16 @@ from scripts.grot_config import ROOT
 
 
 class PublicationInstructionsTests(unittest.TestCase):
+    def test_kubernetes_ci_requires_readiness_and_keeps_failure_diagnostics(self):
+        steps = yaml.safe_load((ROOT / '.github/workflows/e2e-test.yml').read_text())['jobs']['kubernetes']['steps']
+        deploy = next(step['run'] for step in steps if step.get('name') == 'Deploy')
+        wait = next(line for line in deploy.splitlines() if 'kubectl wait' in line)
+        self.assertNotIn('||', wait)
+        diagnostics = next(step for step in steps if step.get('name') == 'Kubernetes failure diagnostics')
+        self.assertEqual('failure()', diagnostics['if'])
+        self.assertIn('describe pods', diagnostics['run'])
+        self.assertIn('--previous', diagnostics['run'])
+
     def test_summary_uses_actual_repository_and_sha_after_all_images(self):
         jobs = yaml.safe_load((ROOT / '.github/workflows/grot-publish.yml').read_text())['jobs']
         self.assertEqual('publish', jobs['deployment-settings']['needs'])
