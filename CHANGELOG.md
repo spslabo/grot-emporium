@@ -1,5 +1,19 @@
 # Changelog
 
+## [1.7.0](https://github.com/spslabo/grot-emporium/compare/v1.6.3...v1.7.0) (2026-10-21)
+
+
+### Features
+
+* add portable Grot Emporium observability demo ([67c823b](https://github.com/spslabo/grot-emporium/commit/67c823b92f645dd5d9c2359c57ab58acb547c30c))
+* enable automatic demo traffic and simplify setup ([7316e85](https://github.com/spslabo/grot-emporium/commit/7316e85e8763791550f89d468b9fce16227dbf15))
+* start demo activity automatically and simplify setup docs ([2314f93](https://github.com/spslabo/grot-emporium/commit/2314f93b795124d3aa25bcf6e1a17341385680f8))
+
+
+### Bug Fixes
+
+* align full acceptance checks with the Grot demo ([8b542e8](https://github.com/spslabo/grot-emporium/commit/8b542e8ccfe8f82dd97e2989508e8e697bd7fd6e))
+
 ## [1.6.3](https://github.com/aws-containers/retail-store-sample-app/compare/v1.6.2...v1.6.3) (2026-09-25)
 
 
