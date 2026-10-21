@@ -41,3 +41,19 @@ jobs:
           platforms: linux/amd64,linux/arm64
           push: true
           tags: ${{ steps.image.outputs.prefix }}/${{ matrix.service }}:${{ github.sha }}
+  deployment-settings:
+    needs: publish
+    runs-on: ubuntu-latest
+    steps:
+      - name: Print Kubernetes deployment settings
+        shell: bash
+        run: |
+          image_prefix="ghcr.io/$(printf '%s' "$GITHUB_REPOSITORY" | tr '[:upper:]' '[:lower:]')"
+          {
+            printf '## Kubernetes deployment settings\n\n'
+            printf 'All five app images have been published. Copy these commands into your deployment terminal:\n\n'
+            printf '```sh\n'
+            printf 'export IMAGE_PREFIX="%s"\n' "$image_prefix"
+            printf 'export VERSION="%s"\n' "$GITHUB_SHA"
+            printf '```\n'
+          } >> "$GITHUB_STEP_SUMMARY"

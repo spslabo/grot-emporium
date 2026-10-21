@@ -118,6 +118,7 @@ jobs:
           kind load docker-image public.ecr.aws/aws-containers/retail-store-sample-checkout:$IMAGE_TAG
           kind load docker-image public.ecr.aws/aws-containers/retail-store-sample-orders:$IMAGE_TAG
           kind load docker-image public.ecr.aws/aws-containers/retail-store-sample-ui:$IMAGE_TAG
+          bash tests/kubernetes/preload-e2e-images.sh kind
 
           docker system prune --all --force
 
@@ -125,10 +126,22 @@ jobs:
         env:
           IMAGE_TAG: e2e
         run: |
-          NODE_PORT=30000 helmfile apply -f src/app/helmfile.yaml --wait --skip-diff-on-install
+          NODE_PORT=30000 helmfile apply -f src/app/helmfile.yaml --wait --skip-diff-on-install \
+            --values "$PWD/tests/kubernetes/e2e-offline-images.yaml"
 
-          kubectl wait --for=condition=Ready pod -l app.kubernetes.io/owner=retail-store-sample --timeout 180s || exit_code=$?
+          kubectl wait --for=condition=Ready pod -l app.kubernetes.io/owner=retail-store-sample --timeout 180s
 
       - name: Test
         run: |
           bash scripts/e2e-kind.sh
+
+      - name: Kubernetes failure diagnostics
+        if: failure()
+        run: |
+          kubectl --context kind-kind get pods -o wide || true
+          kubectl --context kind-kind describe pods || true
+          kubectl --context kind-kind get events --sort-by=.lastTimestamp || true
+          kubectl --context kind-kind get pods -o name | while read -r pod; do
+            kubectl --context kind-kind logs "$pod" --all-containers --prefix --tail=100 || true
+            kubectl --context kind-kind logs "$pod" --all-containers --prefix --previous --tail=50 || true
+          done

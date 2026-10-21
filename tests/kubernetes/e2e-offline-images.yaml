@@ -1,0 +1,18 @@
+# CI-only: all app and dependency images must be loaded into Kind before deployment.
+image:
+  pullPolicy: Never
+mysql:
+  image:
+    pullPolicy: Never
+dynamodb:
+  image:
+    pullPolicy: Never
+postgresql:
+  image:
+    pullPolicy: Never
+rabbitmq:
+  image:
+    pullPolicy: Never
+redis:
+  image:
+    pullPolicy: Never
