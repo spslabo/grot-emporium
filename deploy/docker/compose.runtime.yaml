@@ -1,5 +1,9 @@
 # Shared application images remain unchanged. Only credential delivery differs.
 x-entrypoint: &entrypoint ./runtime-entrypoint.sh:/run/grot/entrypoint.sh:ro
+# Non-secret identities supplied by the launcher; shared by apps and scrapes.
+x-identity: &identity
+  GROT_HOST_ID: ${GROT_HOST_ID:-}
+  GROT_INSTANCE_PREFIX: ${GROT_INSTANCE_PREFIX:-}
 x-memory: &memory
   driver: local
   driver_opts:
@@ -29,37 +33,37 @@ services:
     volumes: [*entrypoint, "database-runtime:/run/grot/database:ro"]
   ui:
     env_file: !reset []
-    environment: { GROT_RUNTIME_ROLES: "backend ui" }
+    environment: { <<: *identity, GROT_RUNTIME_ROLES: "backend ui" }
     entrypoint: [/bin/sh, /run/grot/entrypoint.sh, sh, -c, "exec java $$JAVA_OPTS -jar /app/app.jar"]
     command: []
     volumes: [*entrypoint, "backend-runtime:/run/grot/backend:ro", "ui-runtime:/run/grot/ui:ro"]
   cart:
     env_file: !reset []
-    environment: { GROT_RUNTIME_ROLES: backend }
+    environment: { <<: *identity, GROT_RUNTIME_ROLES: backend }
     entrypoint: [/bin/sh, /run/grot/entrypoint.sh, sh, -c, "exec java $$JAVA_OPTS -jar /app/app.jar"]
     command: []
     volumes: [*entrypoint, "backend-runtime:/run/grot/backend:ro"]
   orders:
     env_file: !reset []
-    environment: { GROT_RUNTIME_ROLES: "backend orders-db" }
+    environment: { <<: *identity, GROT_RUNTIME_ROLES: "backend orders-db" }
     entrypoint: [/bin/sh, /run/grot/entrypoint.sh, sh, -c, "exec java $$JAVA_OPTS -jar /app/app.jar"]
     command: []
     volumes: [*entrypoint, "backend-runtime:/run/grot/backend:ro", "orders-db-runtime:/run/grot/orders-db:ro"]
   catalog:
     env_file: !reset []
-    environment: { GROT_RUNTIME_ROLES: backend }
+    environment: { <<: *identity, GROT_RUNTIME_ROLES: backend }
     entrypoint: [/bin/sh, /run/grot/entrypoint.sh, /app/main]
     command: []
     volumes: [*entrypoint, "backend-runtime:/run/grot/backend:ro"]
   checkout:
     env_file: !reset []
-    environment: { GROT_RUNTIME_ROLES: backend }
+    environment: { <<: *identity, GROT_RUNTIME_ROLES: backend }
     entrypoint: [/bin/sh, /run/grot/entrypoint.sh, node, dist/main.js]
     command: []
     volumes: [*entrypoint, "backend-runtime:/run/grot/backend:ro"]
   alloy:
     env_file: !reset []
-    environment: { GROT_RUNTIME_ROLES: "alloy monitor-db" }
+    environment: { <<: *identity, GROT_RUNTIME_ROLES: "alloy monitor-db" }
     entrypoint: [/bin/sh, /run/grot/entrypoint.sh, /bin/alloy]
     volumes: [*entrypoint, "alloy-runtime:/run/grot/alloy:ro", "monitor-db-runtime:/run/grot/monitor-db:ro"]
   gateway:

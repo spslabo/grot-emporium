@@ -10,6 +10,7 @@ ROOT=Path(__file__).resolve().parents[2]
 sys.path[:0]=[str(ROOT),str(ROOT/'tests/telemetry')]
 from scripts import grot, grot_infrastructure
 from prepare_destinations import certificate, mock_settings
+from identity import SERVICES, assert_identities
 work=Path(os.environ['GROT_K3S_TEST_DIR'])
 cluster=os.environ['GROT_K3S_TEST_CLUSTER']
 assert cluster.startswith('grot-acceptance-')
@@ -49,14 +50,14 @@ def install(a, inputs=None):
     with patch.object(sys,'stdin',io.StringIO(json.dumps(inputs or settings('alpha')))):
         grot.k8s(a)
 
-def stats():
-    code="import urllib.request,ssl; print(urllib.request.urlopen('https://"+host+":18766/stats',context=ssl.create_default_context(cafile='/certs/cert.pem')).read().decode())"
+def stats(endpoint='stats'):
+    code="import urllib.request,ssl; print(urllib.request.urlopen('https://"+host+":18766/"+endpoint+"',context=ssl.create_default_context(cafile='/certs/cert.pem')).read().decode())"
     return json.loads(run(kube+['-n','grot-target','exec','deployment/sink','--','python','-c',code]))
 
 def snapshot(a):
     return {role:grot.get_object(kube+['-n',a.namespace],'secret',name) for role,name in grot.SECRET_NAMES.items()}
 
-def assert_signals(name, rotated=False):
+def assert_signals(name, a, rotated=False):
     expected=[name+(':rotated' if rotated else '')+':'+signal for signal in ('metrics','logs','traces','profiles')]
     expected += [name+':'+signal for signal in ('db-health', 'db-query-metrics', 'db-query-details', 'infra-containers', 'infra-host', 'infra-kube-state', 'infra-events')]
     expected += [name+':faro'] + [name+':profile:'+service for service in ('ui','cart','orders','catalog','checkout')]
@@ -68,6 +69,22 @@ def assert_signals(name, rotated=False):
         assert time.monotonic()<deadline, 'Missing destination acknowledgements: '+str([key for key in expected if not values.get(key,0)])
         time.sleep(3)
     assert not values.get('credential_leak',0)
+    pods = json.loads(run(kube + ['-n', a.namespace, 'get', 'pods', '-l', 'app.kubernetes.io/part-of=grot-emporium', '-o', 'json']))['items']
+    current = {pod['metadata']['labels'].get('service_name'): (pod['spec']['nodeName'], pod['metadata']['uid'])
+        for pod in pods if not pod['metadata'].get('deletionTimestamp') and pod['metadata']['labels'].get('service_name') in SERVICES}
+    deadline = time.monotonic() + 120
+    while True:
+        try:
+            assert_identities(stats('identities'), name, current)
+            break
+        except AssertionError:
+            if time.monotonic() >= deadline: raise
+            time.sleep(3)
+    print('All five services exported their actual node name and matching pod UID in traces and runtime metrics.', flush=True)
+    rows = run(kube + ['-n', a.namespace, 'exec', 'deployment/grot-postgres', '--', 'sh', '-c',
+        'export PGPASSWORD="$GROT_DB_MONITOR_PASSWORD"; exec psql -h 127.0.0.1 -U db-o11y -d orders -At -c "SELECT count(*) FROM orders;"'])
+    assert int(rows.strip()) > 0, 'Checkout confirmation did not persist real orders'
+    print('Kubernetes checkout persisted real PostgreSQL orders.', flush=True)
     print(name+': app signals + cAdvisor/container metrics + node metrics + kube-state-metrics + Kubernetes events'+(' with rotated auth' if rotated else ''),flush=True)
     history=run(['helm','--kube-context',context,'-n',grot_infrastructure.NAMESPACE,'get','values',grot_infrastructure.RELEASE,'-o','json'])
     assert 'dummy-not-a-real-token' not in history and 'dummy-rotated-not-a-real-token' not in history
@@ -90,7 +107,7 @@ if not (work/'prepared').exists():
         run(['docker','exec','k3d-'+cluster+'-server-0','crictl','pull',image])
     run(kube+['create','namespace','grot-target'])
     secret('sink-tls',{key:(work/key).read_text() for key in ('cert.pem','key.pem')},'grot-target')
-    create({'apiVersion':'v1','kind':'ConfigMap','metadata':{'name':'sink-code'},'data':{'sink.py':(ROOT/'tests/telemetry/destination_sink.py').read_text(), 'snappy_block.py':(ROOT/'tests/telemetry/snappy_block.py').read_text()}})
+    create({'apiVersion':'v1','kind':'ConfigMap','metadata':{'name':'sink-code'},'data':{'sink.py':(ROOT/'tests/telemetry/destination_sink.py').read_text(), 'snappy_block.py':(ROOT/'tests/telemetry/snappy_block.py').read_text(), 'identity.py':(ROOT/'tests/telemetry/identity.py').read_text()}})
     create({'apiVersion':'apps/v1','kind':'Deployment','metadata':{'name':'sink'},'spec':{'replicas':1,'selector':{'matchLabels':{'app':'sink'}},'template':{'metadata':{'labels':{'app':'sink'}},'spec':{'automountServiceAccountToken':False,'containers':[{'name':'sink','image':'python:3.12-alpine','command':['python','/code/sink.py'],'ports':[{'containerPort':18766}],'volumeMounts':[{'name':'code','mountPath':'/code','readOnly':True},{'name':'tls','mountPath':'/certs','readOnly':True}]}],'volumes':[{'name':'code','configMap':{'name':'sink-code'}},{'name':'tls','secret':{'secretName':'sink-tls'}}]}}}})
     create({'apiVersion':'v1','kind':'Service','metadata':{'name':'sink'},'spec':{'selector':{'app':'sink'},'ports':[{'port':18766,'targetPort':18766}]}})
     run(kube+['-n','grot-target','rollout','status','deployment/sink','--timeout=90s'])
@@ -99,7 +116,7 @@ if not (work/'prepared').exists():
 with patch.object(grot,'run',side_effect=run), patch.object(grot,'CONFIG_ROOT',work/'state'):
     a=args('k3s-quick')
     print('INSTALL QUICK',flush=True); install(a)
-    print('VERIFY QUICK',flush=True); grot.verify(a); assert_signals('alpha')
+    print('VERIFY QUICK',flush=True); grot.verify(a); assert_signals('alpha', a)
     before=snapshot(a)
     altered=settings('beta')
     try: install(a,altered); raise AssertionError('retarget allowed')
@@ -109,7 +126,7 @@ with patch.object(grot,'run',side_effect=run), patch.object(grot,'CONFIG_ROOT',w
     rotated=settings('alpha')
     for key in rotated['alloy']:
         if key.endswith('_TOKEN'): rotated['alloy'][key]='dummy-rotated-not-a-real-token'
-    print('ROTATE QUICK',flush=True); install(a,rotated); grot.verify(a); assert_signals('alpha',True)
+    print('ROTATE QUICK',flush=True); install(a,rotated); grot.verify(a); assert_signals('alpha', a, True)
     adopted='grot-ui-runtime'
     run(kube+['-n',a.namespace,'annotate','secret',adopted,'external-test-manager=true','--field-manager=external-test-manager'])
     adopted_before=grot.get_object(kube+['-n',a.namespace],'secret',adopted)
@@ -130,7 +147,7 @@ with patch.object(grot,'run',side_effect=run), patch.object(grot,'CONFIG_ROOT',w
     for role,values in grot.make_roles(settings('beta')).items(): secret(grot.SECRET_NAMES[role],values,b.namespace)
     external_before=snapshot(b)
     print('INSTALL LONG-TERM',flush=True); install(b)
-    print('VERIFY LONG-TERM',flush=True); grot.verify(b); assert_signals('beta')
+    print('VERIFY LONG-TERM',flush=True); grot.verify(b); assert_signals('beta', b)
     alpha_after={key:value for key,value in stats().items() if key.startswith('alpha:')}
     assert alpha_after==alpha_counts, 'Unexpected alpha traffic after teardown: '+str({key:value-alpha_counts.get(key,0) for key,value in alpha_after.items() if value!=alpha_counts.get(key,0)})
     # k3s enforces the namespace-local collector ingress policy.

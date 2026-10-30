@@ -258,7 +258,9 @@ def compose(path, args, state=None):
     env.update(GROT_PORT=str(values.get('port', 8080)), GROT_SYSLOG_PORT=str(values.get('syslog_port', 15140)),
         GROT_COLLECTOR_PORT=str(values.get('collector_port', 12345)),
         GROT_IMAGE_PREFIX='grot', GROT_IMAGE_TAG='local', COMPOSE_PARALLEL_LIMIT='2',
-        GROT_DOCKER_PROJECT='grot-' + args.destination)
+        GROT_DOCKER_PROJECT='grot-' + args.destination,
+        GROT_HOST_ID=values.get('host_id', '') or '',
+        GROT_INSTANCE_PREFIX=values.get('instance_prefix', ''))
     command = ['docker', 'compose', '-p', 'grot-' + args.destination, '-f', 'deploy/docker/compose.yaml', '-f', 'deploy/docker/compose.telemetry.yaml', '-f', 'deploy/docker/compose.runtime.yaml']
     return command, env
 
@@ -300,6 +302,14 @@ def remove_runtime_volumes(destination, include_data=False):
         elif include_data: raise SafeError('Refusing to delete an unowned or unexpected volume; ownership state was retained')
 
 
+def docker_host_id(override=None):
+    """Identify the target Docker engine, including remote contexts (not this CLI host)."""
+    value = override if override is not None else 'docker-' + run(['docker', 'info', '--format', '{{.ID}}']).strip()
+    if value == 'docker-' or not re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}', value):
+        raise SafeError('Cannot identify Docker host; supply --host-id with a stable machine identifier (letters, digits, dot, colon, underscore or hyphen)')
+    return value
+
+
 def docker(args):
     path = profile_path(args.destination)
     roles = settings(args)
@@ -318,14 +328,18 @@ def docker(args):
         existing = run(['docker', 'volume', 'ls', '--filter', 'name=^' + volume + '$', '--format', '{{.Name}}'])
         if volume in existing.splitlines():
             raise SafeError('An unbound collector buffer already exists for this alias. Choose a new alias; do not silently reuse another destination\'s queue')
+    host_id = docker_host_id(getattr(args, 'host_id', None))
+    instance_prefix = secrets.token_hex(16)
     command, env = compose(path, args)
+    env.update(GROT_HOST_ID=host_id, GROT_INSTANCE_PREFIX=instance_prefix)
     print('Building shared app images (no destination settings are build arguments)...', flush=True)
     run(command + ['build'], env=env, visible=True)
     print('Starting cAdvisor + Linux host metrics, PostgreSQL, Database Observability, app, collector and private Faro proxy (ephemeral demo data)...', flush=True)
     # Bind the buffer before starting it, including when startup subsequently fails.
     path.mkdir(mode=0o700, parents=True, exist_ok=True)
     save(state_path, json.dumps(dict(port=args.port, syslog_port=args.syslog_port,
-        collector_port=args.collector_port, fingerprint=fingerprint(roles), faro=bool(roles['gateway']['GRAFANA_FARO_URL']))))
+        collector_port=args.collector_port, host_id=host_id, instance_prefix=instance_prefix,
+        fingerprint=fingerprint(roles), faro=bool(roles['gateway']['GRAFANA_FARO_URL']))))
     try:
         activity_control(args, cleanup=True)
         stage_runtime(command, env, args.destination, roles)
@@ -809,6 +823,7 @@ def main():
     start.add_argument('--port', type=int, default=8080)
     start.add_argument('--syslog-port', type=int, default=15140)
     start.add_argument('--collector-port', type=int, default=12345)
+    start.add_argument('--host-id', help='Stable actual Docker-host identifier; defaults to the target engine ID. Use the same override for multiple engines on one host')
     shutdown = sub.add_parser('stop')
     shutdown.add_argument('destination'); shutdown.add_argument('--context'); shutdown.add_argument('--namespace')
     check = sub.add_parser('verify')

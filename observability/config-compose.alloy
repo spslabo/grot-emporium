@@ -179,6 +179,17 @@ prometheus.scrape "grot" {
 }
 prometheus.relabel "identity" {
   forward_to = [prometheus.remote_write.destination.receiver]
+  // The managed Compose deployment runs one instance per service. Match the
+  // per-launch identity injected by runtime-entrypoint.sh, not the DNS address.
+  rule {
+    source_labels = ["service_name"]
+    target_label = "instance"
+    replacement = sys.env("GROT_INSTANCE_PREFIX") + "-$1"
+  }
+  rule {
+    target_label = "grafana_host_id"
+    replacement = sys.env("GROT_HOST_ID")
+  }
   rule {
     target_label = "service_namespace"
     replacement = "grot-emporium"

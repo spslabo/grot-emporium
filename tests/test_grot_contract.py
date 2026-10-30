@@ -39,6 +39,33 @@ class HelmTests(unittest.TestCase):
             self.assertIn('k8s.pod.uid=$(POD_UID)', env['OTEL_RESOURCE_ATTRIBUTES']['value'])
         self.assertEqual({'grot-ui','grot-cart','grot-orders','grot-catalog','grot-checkout'}, seen)
 
+    def test_checkout_calls_the_real_orders_service(self):
+        for extra in ([], ['-f', 'src/app/chart/values-grot-profiles.yaml'],
+                      ['--set', 'checkout.app.persistence.provider=redis']):
+            rendered = self.render(*extra)
+            checkout = next(o for o in rendered if o['kind'] == 'Deployment' and o['metadata']['name'] == 'checkout')
+            container = checkout['spec']['template']['spec']['containers'][0]
+            names = [v['configMapRef']['name'] for v in container['envFrom'] if 'configMapRef' in v]
+            configs = [o for o in rendered if o['kind'] == 'ConfigMap' and o['metadata']['name'] in names]
+            values = {k: v for o in configs for k, v in o.get('data', {}).items()}
+            orders = next(o for o in rendered if o['kind'] == 'Service' and o['metadata']['name'] == 'orders')
+            port = next(p['port'] for p in orders['spec']['ports'] if p['name'] == 'http')
+            self.assertEqual(f'http://orders:{port}', values.get('RETAIL_CHECKOUT_ENDPOINTS_ORDERS'))
+
+    def test_host_and_instance_identity_with_and_without_profiling(self):
+        for extra in ([], ['-f', 'src/app/chart/values-grot-profiles.yaml']):
+            deployments = [d for d in self.render(*extra) if d['kind'] == 'Deployment' and d['metadata']['name'] != 'grot-postgres']
+            self.assertEqual(5, len(deployments))
+            for deployment in deployments:
+                env = deployment['spec']['template']['spec']['containers'][0]['env']
+                names = [entry['name'] for entry in env]
+                values = {entry['name']: entry for entry in env}
+                self.assertEqual('spec.nodeName', values['K8S_NODE_NAME']['valueFrom']['fieldRef']['fieldPath'])
+                self.assertLess(names.index('K8S_NODE_NAME'), names.index('OTEL_RESOURCE_ATTRIBUTES'))
+                self.assertLess(names.index('POD_UID'), names.index('OTEL_RESOURCE_ATTRIBUTES'))
+                self.assertIn('k8s.node.name=$(K8S_NODE_NAME)', values['OTEL_RESOURCE_ATTRIBUTES']['value'])
+                self.assertIn('service.instance.id=$(POD_UID)', values['OTEL_RESOURCE_ATTRIBUTES']['value'])
+
     def test_profiles_are_opt_in_and_cover_all_services(self):
         for enabled in (False, True):
             extra = ['-f','src/app/chart/values-grot-profiles.yaml'] if enabled else []

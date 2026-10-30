@@ -302,6 +302,7 @@ class DestinationWorkflowTests(unittest.TestCase):
         def run(command, **kwargs):
             calls.append(command)
             if 'version' in command: return '2.40.0'
+            if command[:2] == ['docker', 'info']: return 'target-engine-id'
             if 'up' in command: raise grot.SafeError('simulated failed start')
             return ''
         with patch.object(grot, 'settings', return_value=self.roles), patch.object(grot, 'stage_runtime'), patch.object(grot, 'remove_runtime_volumes') as cleanup, patch.object(grot, 'run', side_effect=run), contextlib.redirect_stdout(io.StringIO()), self.assertRaises(grot.SafeError):
@@ -309,6 +310,11 @@ class DestinationWorkflowTests(unittest.TestCase):
         self.assertTrue(any('down' in cmd for cmd in calls)); cleanup.assert_called_once_with('team-a')
         state = json.loads((grot.profile_path('team-a') / 'run.json').read_text())
         self.assertEqual(grot.fingerprint(self.roles), state['fingerprint'])
+        self.assertEqual('docker-target-engine-id', state['host_id'])
+        self.assertRegex(state['instance_prefix'], r'^[0-9a-f]{32}$')
+        _, env = grot.compose(None, args, state)
+        self.assertEqual(state['host_id'], env['GROT_HOST_ID'])
+        self.assertEqual(state['instance_prefix'], env['GROT_INSTANCE_PREFIX'])
         self.assertNotIn('synthetic-private-token', json.dumps(state))
 
     def test_long_term_cleanup_never_deletes_secrets(self):

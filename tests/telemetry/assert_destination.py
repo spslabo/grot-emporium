@@ -3,6 +3,7 @@ import sys
 import time
 from urllib.request import Request, urlopen
 from urllib.error import HTTPError
+from identity import SERVICES, assert_identities
 
 name = sys.argv[1]
 expected = {name + ':' + signal for signal in ('metrics', 'logs', 'traces', 'profiles', 'faro', 'db-query-metrics', 'db-query-details', 'db-health', 'db-traces', 'infra-containers', 'infra-host')}
@@ -27,6 +28,16 @@ for _ in range(40):
     if all(counts.get(signal, 0) > 0 for signal in expected): break
     time.sleep(3)
 else: raise SystemExit('Missing signal types: ' + ', '.join(sorted(expected - {k for k, v in counts.items() if v > 0})))
+expected_identity = {service: (sys.argv[2], sys.argv[3] + '-' + service) for service in SERVICES}
+for attempt in range(40):
+    with urlopen('https://sink:18766/identities', timeout=5) as response: identities = json.load(response)
+    try:
+        assert_identities(identities, name, expected_identity)
+        break
+    except AssertionError:
+        if attempt == 39: raise
+        time.sleep(3)
+print('All five services exported matching host/instance identities in traces and runtime metrics.')
 assert not counts.get('credential_leak'), 'Proxy forwarded browser credentials'
 other = 'beta' if name == 'alpha' else 'alpha'
 assert not any(key.startswith(other + ':') for key in counts), 'Cross-destination telemetry leak'
