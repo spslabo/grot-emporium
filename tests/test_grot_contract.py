@@ -52,6 +52,20 @@ class HelmTests(unittest.TestCase):
             port = next(p['port'] for p in orders['spec']['ports'] if p['name'] == 'http')
             self.assertEqual(f'http://orders:{port}', values.get('RETAIL_CHECKOUT_ENDPOINTS_ORDERS'))
 
+    def test_host_and_instance_identity_with_and_without_profiling(self):
+        for extra in ([], ['-f', 'src/app/chart/values-grot-profiles.yaml']):
+            deployments = [d for d in self.render(*extra) if d['kind'] == 'Deployment' and d['metadata']['name'] != 'grot-postgres']
+            self.assertEqual(5, len(deployments))
+            for deployment in deployments:
+                env = deployment['spec']['template']['spec']['containers'][0]['env']
+                names = [entry['name'] for entry in env]
+                values = {entry['name']: entry for entry in env}
+                self.assertEqual('spec.nodeName', values['K8S_NODE_NAME']['valueFrom']['fieldRef']['fieldPath'])
+                self.assertLess(names.index('K8S_NODE_NAME'), names.index('OTEL_RESOURCE_ATTRIBUTES'))
+                self.assertLess(names.index('POD_UID'), names.index('OTEL_RESOURCE_ATTRIBUTES'))
+                self.assertIn('k8s.node.name=$(K8S_NODE_NAME)', values['OTEL_RESOURCE_ATTRIBUTES']['value'])
+                self.assertIn('service.instance.id=$(POD_UID)', values['OTEL_RESOURCE_ATTRIBUTES']['value'])
+
     def test_profiles_are_opt_in_and_cover_all_services(self):
         for enabled in (False, True):
             extra = ['-f','src/app/chart/values-grot-profiles.yaml'] if enabled else []

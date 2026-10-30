@@ -26,9 +26,13 @@ ui:
       name: POD_UID
       valueFrom:
         fieldRef: { fieldPath: metadata.uid }
+    - &nodename
+      name: K8S_NODE_NAME
+      valueFrom:
+        fieldRef: { fieldPath: spec.nodeName }
     - &resource
       name: OTEL_RESOURCE_ATTRIBUTES
-      value: "$(GROT_RESOURCE_ATTRIBUTES),service.instance.id=$(POD_UID),k8s.pod.uid=$(POD_UID)"
+      value: "$(GROT_RESOURCE_ATTRIBUTES),service.instance.id=$(POD_UID),k8s.pod.uid=$(POD_UID),k8s.node.name=$(K8S_NODE_NAME)"
     - &version
       name: SERVICE_VERSION
       valueFrom:
@@ -45,6 +49,7 @@ cart:
   extraEnv:
     - { name: OTEL_SERVICE_NAME, value: grot-cart }
     - *poduid
+    - *nodename
     - *resource
     - *version
 catalog:
@@ -56,6 +61,7 @@ catalog:
   extraEnv:
     - { name: OTEL_SERVICE_NAME, value: grot-catalog }
     - *poduid
+    - *nodename
     - *resource
     - *version
 checkout:
@@ -67,6 +73,7 @@ checkout:
   extraEnv:
     - { name: OTEL_SERVICE_NAME, value: grot-checkout }
     - *poduid
+    - *nodename
     - *resource
     - *version
 orders:
@@ -85,5 +92,6 @@ orders:
       valueFrom:
         secretKeyRef: { name: grot-database-runtime, key: GROT_DB_APP_PASSWORD }
     - *poduid
+    - *nodename
     - *resource
     - *version

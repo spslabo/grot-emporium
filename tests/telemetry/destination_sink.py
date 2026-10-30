@@ -1,5 +1,5 @@
 """TLS mock destinations for offline transport tests. Never retains payloads/tokens."""
-from collections import Counter
+from collections import Counter, defaultdict
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from threading import Lock
 from urllib.parse import urlsplit, parse_qs
@@ -9,15 +9,18 @@ import os
 import ssl
 import gzip
 from snappy_block import decode
+from identity import otlp_identities, prometheus_identities
 
+identities = defaultdict(set)
 counts = Counter()
 lock = Lock()
 
 class Handler(BaseHTTPRequestHandler):
     def log_message(self, *_): pass
     def do_GET(self):
-        if self.path != '/stats': self.send_error(404); return
-        with lock: data = json.dumps(dict(counts)).encode()
+        if self.path not in ('/stats', '/identities'): self.send_error(404); return
+        with lock:
+            data = json.dumps(dict(counts) if self.path == '/stats' else {key: sorted(value) for key, value in identities.items()}).encode()
         self.send_response(200); self.end_headers(); self.wfile.write(data)
     def do_POST(self):
         path = urlsplit(self.path).path
@@ -58,13 +61,17 @@ class Handler(BaseHTTPRequestHandler):
         elif path in ('/api/prom/push', '/otlp/v1/metrics'): signal = 'metrics'
         else: self.send_error(404); return
         db_markers = []
+        observed = []
         if signal == 'traces':
             decoded = gzip.decompress(body) if self.headers.get('Content-Encoding') == 'gzip' else body
+            observed = [('traces', *item) for item in otlp_identities(decoded)]
             if b'postgresql' in decoded and b'db.system' in decoded:
                 db_markers.append('db-traces')
         if path in ('/api/prom/push', '/loki/api/v1/push'):
             try:
                 decoded = decode(body)
+                if path == '/api/prom/push':
+                    observed = [('runtime-metrics', *item) for item in prometheus_identities(decoded)]
                 for needle, marker in [(b'container_cpu_usage_seconds_total', 'infra-containers'),
                                        (b'node_cpu_seconds_total', 'infra-host'),
                                        (b'kube_pod_info', 'infra-kube-state'),
@@ -77,6 +84,8 @@ class Handler(BaseHTTPRequestHandler):
             except (ValueError, IndexError):
                 self.send_error(400); return
         with lock:
+            for kind, service, host, instance in observed:
+                identities[f'{destination}:{kind}:{service}'].add((host, instance))
             for marker in db_markers: counts[destination + ':' + marker] += 1
             counts[destination + ':' + signal] += 1
             if rotated: counts[destination + ':rotated:' + signal] += 1

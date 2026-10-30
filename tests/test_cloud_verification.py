@@ -37,6 +37,16 @@ class CloudVerificationTests(unittest.TestCase):
         self.assertTrue(all('wall:wall:nanoseconds:wall:nanoseconds' in c for c in profile_queries))
         self.assertTrue(any('cluster="team-demo"' in ' '.join(c) for c in self.commands))
 
+    def test_database_query_details_use_the_operation_label_not_line_content(self):
+        with contextlib.redirect_stdout(io.StringIO()):
+            grot_cloud.verify(self.args, self.execute, grot.SafeError)
+        commands = [c for c in self.commands if 'logs' in c and 'query_association' in ' '.join(c)]
+        self.assertEqual(1, len(commands))
+        query = ' '.join(commands[0])
+        self.assertIn('op="query_association"', query)
+        self.assertIn('cluster="team-demo"', query)
+        self.assertNotIn('|=', query)
+
     def test_only_fixed_read_only_gcx_operations_are_used(self):
         with contextlib.redirect_stdout(io.StringIO()):
             grot_cloud.verify(self.args, self.execute, grot.SafeError)

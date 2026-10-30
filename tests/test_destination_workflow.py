@@ -302,6 +302,7 @@ class DestinationWorkflowTests(unittest.TestCase):
         def run(command, **kwargs):
             calls.append(command)
             if 'version' in command: return '2.40.0'
+            if command[:2] == ['docker', 'info']: return 'target-engine-id'
             if 'up' in command: raise grot.SafeError('simulated failed start')
             return ''
         with patch.object(grot, 'settings', return_value=self.roles), patch.object(grot, 'stage_runtime'), patch.object(grot, 'remove_runtime_volumes') as cleanup, patch.object(grot, 'run', side_effect=run), contextlib.redirect_stdout(io.StringIO()), self.assertRaises(grot.SafeError):

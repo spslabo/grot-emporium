@@ -81,8 +81,10 @@ def verify(args, run, error):
         check(label, 'grot-postgres', ['metrics', 'query', '-d', selected['metrics'],
             'sum by(service_name) (' + expression + db_selector + ')'],
             lambda d: 'grot-postgres' in positive_services(d))
+    # Alloy emits the operation as a stream label, not part of the log line.
+    db_details_selector = '{job="integrations/db-o11y",cluster=' + json.dumps(cluster) + ',op="query_association"}'
     check('database query details', 'grot-postgres', ['logs', 'query', '-d', selected['logs'],
-        'sum by(service_name) (count_over_time(' + db_selector + ' |= "query_association" [15m]))', '--since', '15m'],
+        'sum by(service_name) (count_over_time(' + db_details_selector + '[15m]))', '--since', '15m'],
         lambda d: 'grot-postgres' in positive_services(d))
     def log_coverage(response):
         found = SERVICES & positive_services(response)

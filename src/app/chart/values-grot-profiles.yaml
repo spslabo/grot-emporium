@@ -12,18 +12,22 @@ orders:
 catalog:
   extraEnv:
     - { name: OTEL_SERVICE_NAME, value: grot-catalog }
-    - name: POD_UID
+    - &poduid
+      name: POD_UID
       valueFrom:
         fieldRef: { fieldPath: metadata.uid }
-    - name: OTEL_RESOURCE_ATTRIBUTES
-      value: "$(GROT_RESOURCE_ATTRIBUTES),service.instance.id=$(POD_UID),k8s.pod.uid=$(POD_UID)"
+    - &nodename
+      name: K8S_NODE_NAME
+      valueFrom:
+        fieldRef: { fieldPath: spec.nodeName }
+    - &resource
+      name: OTEL_RESOURCE_ATTRIBUTES
+      value: "$(GROT_RESOURCE_ATTRIBUTES),service.instance.id=$(POD_UID),k8s.pod.uid=$(POD_UID),k8s.node.name=$(K8S_NODE_NAME)"
     - { name: PYROSCOPE_ENABLED, value: "true" }
 checkout:
   extraEnv:
     - { name: OTEL_SERVICE_NAME, value: grot-checkout }
-    - name: POD_UID
-      valueFrom:
-        fieldRef: { fieldPath: metadata.uid }
-    - name: OTEL_RESOURCE_ATTRIBUTES
-      value: "$(GROT_RESOURCE_ATTRIBUTES),service.instance.id=$(POD_UID),k8s.pod.uid=$(POD_UID)"
+    - *poduid
+    - *nodename
+    - *resource
     - { name: PYROSCOPE_ENABLED, value: "true" }

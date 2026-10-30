@@ -38,12 +38,14 @@ Requires Python 3, Docker Compose 2.30+ and approximately 8 GiB available memory
 |---|---|
 | `--port 8081` | Change the browser port |
 | `--collector-port 12346 --syslog-port 15141` | Avoid port conflicts with another demo |
+| `--host-id demo-host-01` | Override Docker host identity; use one stable actual-machine ID when multiple Docker engines share a host |
 | `--no-demo-traffic` | Disable automatic shopping/browser activity |
 | `--verbose` | Show deployment progress details |
 
 - Rerun the launcher to update ingestion tokens.
 - Use a new demo name when changing Grafana destinations.
 - Docker relaunch resets order data.
+- Docker and Kubernetes attach application host/instance identity automatically. Identified hosts can count toward **Application Observability host-hours billing**; see [identity and correlation](../docs/application-observability.md).
 
 ## Kubernetes quick
 

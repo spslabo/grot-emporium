@@ -66,7 +66,11 @@ with tempfile.TemporaryDirectory(prefix='grot-runtime-test-') as directory:
                     grot.run(monitor, env=env, data='BEGIN; DELETE FROM orders; ROLLBACK;')
                     raise AssertionError('Monitoring user could delete orders')
                 except grot.SafeError: pass
-                grot.run(command + ['run', '--rm', 'probe', 'python', '/test/assert_destination.py', name], env=env, visible=True)
+                state = json.loads((grot.profile_path(alias) / 'run.json').read_text())
+                # Reuse the identities recorded by this launch for later Compose commands.
+                command, env = compose(None, args, state)
+                grot.run(command + ['run', '--rm', 'probe', 'python', '/test/assert_destination.py', name,
+                    state['host_id'], state['instance_prefix']], env=env, visible=True)
                 ids = grot.run(command + ['ps', '-q'], env=env).split()
                 inspected = json.loads(grot.run(['docker', 'inspect'] + ids))
                 expected = {'ui': {'backend', 'ui'}, 'cart': {'backend'}, 'orders': {'backend', 'orders-db'}, 'postgres': {'database'},
