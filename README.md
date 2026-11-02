@@ -119,6 +119,7 @@ For example, a fork at `github.com/alex/grot-emporium` publishes images under `g
 
 ## More options
 
+- [Reusable overview dashboard](observability/dashboards/README.md)
 - [AI chat and Agent Observability](docs/optional-ai-chat.md)
 - [Long-term credentials, security, verification and troubleshooting](deploy/README.md)
 - [PostgreSQL and Database Observability](docs/database-observability.md)
