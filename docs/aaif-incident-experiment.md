@@ -2,12 +2,14 @@
 
 ## Status
 
-Phase 1 repository inspection complete; runtime baseline validation found a product
-persistence mismatch. No failures have been injected, deployments changed, paid
-model calls made, or agent experiment results collected. See
-[baseline findings](aaif-baseline-findings.md): one synthetic order was confirmed and
-persisted, but its product ID was `0` rather than the selected UUID. Fix/understand
-this before declaring a healthy baseline or validating the numeric-SKU fault.
+Phase 1 repository inspection and live baseline checks complete. Initial validation
+found product-ID and unit-price persistence bugs; both are now fixed and deployed.
+The disposable app/database were torn down and redeployed at the user's direction,
+with existing Grafana configuration and runtime credentials retained. Three consecutive
+storefront purchases passed exact PostgreSQL verification; demo traffic is re-enabled.
+See [baseline findings](aaif-baseline-findings.md) for source revision and evidence.
+No deliberate failures, paid model calls or agent experiment results yet. The candidate
+fault still requires runtime validation before Phase 1's reproducibility gate is complete.
 The existing deployment was identified in prior project conversations and the local
 deployment README: EKS `grot-eks-test-20260929`, AWS profile `grafana`, region
 `us-east-2`, context `grot-aws-test`, namespace `grot-aws-quick`, deployment alias
@@ -162,8 +164,8 @@ platform or extra dashboards before the first unattended run works.
 - [x] Run an initial synthetic purchase and inspect its exact PostgreSQL order/item.
 - [x] Diagnose and fix product-ID persistence and unit-price serialization locally;
       12 Orders tests (including PostgreSQL) and 5 checkout tests pass.
-- [ ] Review/publish/deploy the fixes with the documented schema-migration precautions,
-      then obtain a fully passing EKS purchase probe.
+- [x] Publish/deploy the fixes by recreating the disposable app/database, then obtain
+      three consecutive passing EKS purchase probes (exact products and prices checked).
 - [ ] Confirm relevant metrics, logs and traces arrive in the intended stack.
 
 Exit: healthy target and telemetry proven, with evidence saved.
@@ -184,7 +186,9 @@ Exit: process health cannot produce a false recovery result.
 
 - [ ] Build healthy and regression Orders images separately and pin both digests.
 - [ ] Add explicit-target controls, an environment lock and best-effort cleanup on
-      failure/interruption; document manual reset if cleanup cannot run.
+      failure/interruption; document manual reset if cleanup cannot run. For deployment
+      upgrades or a full demo reset, prefer teardown/redeploy of this disposable app;
+      preserve credentials and telemetry configuration, not synthetic order history.
 - [ ] Healthy → regression → purchase failure → Orders restart → still failed →
       healthy image restored → verified recovery.
 - [ ] Healthy → in-memory Orders fault → failed → restart → verified recovery.

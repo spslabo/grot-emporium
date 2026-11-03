@@ -104,27 +104,45 @@ Local validation after fixes:
 Docker Desktop was started for local tests. A temporary JDK 21 was downloaded under
 `/tmp/grot-aaif-java` for Maven; no system Java installation was changed.
 
-**Not yet deployed to EKS.** Do not describe the live application as repaired yet.
-A read-only migration preflight counted 59,943 existing items, no non-numeric legacy
-product IDs, and no duplicate `(order_id, product_id)` positions at inspection time.
-The V2 migration preserves the stored positions; it does NOT recover historical UUIDs
-or prices. The original V1 migration is unchanged.
+## Live fix verified — 2026-11-03 18:45 UTC
 
-Deployment needs a controlled maintenance window:
+Deployed Orders and checkout images from source revision
+`4e1693aa3b0cdb5dd6fa40eacb444ba7d575af47` after all PR checks and their image
+publication jobs passed. Full publication workflow subsequently completed successfully.
+Source: [PR #7](https://github.com/spslabo/grot-emporium/pull/7).
 
-1. Publish tested Orders and checkout images from the reviewed source revision.
-2. Pause demo traffic and block new purchases; let in-flight requests finish.
-3. Back up the disposable database if historical demo data must be retained. Do not
-   restart its pod: the deployment uses ephemeral storage.
-4. Stop old Orders writers before starting the new image and its Flyway migration.
-   Old Orders code is incompatible with the new required position column; do not
-   mix old/new versions or blindly roll back the image after migration.
-5. Deploy the corrected checkout client, restore access, and rerun the independent
-   purchase probe against EKS. Require the selected UUID and nonzero expected price
-   to match the newly persisted order.
-6. Resume traffic only after verification. For rollback, use a planned schema/database
-   restore with matching old images, not an unreviewed automated image rollback.
+**This app is disposable. Prefer teardown/redeploy over preserving demo orders.**
+At the user's direction, the actual rollout was:
 
-Historical defective rows are retained as evidence; only new purchases can establish
-a passing baseline after deployment. Fault injection and agent trials remain blocked
-until then.
+1. Suspend the demo-traffic CronJob and delete its current job.
+2. Uninstall only Helm release `grot`, removing the app and ephemeral PostgreSQL data.
+   Preserve the runtime credential Secrets and separate Grafana/telemetry resources.
+3. Reinstall `grot` with existing settings and the fixed Orders/checkout image tags.
+   The fresh database applies V1 and V2 migrations. Other application images stay pinned
+   to their prior revision.
+4. Restart the gateway to resolve the recreated UI service address.
+5. Complete three fresh storefront purchases, ten seconds apart, and verify each exact
+   order, synthetic email, product UUID, quantity, unit cost and total in PostgreSQL.
+6. Re-enable the demo-traffic CronJob. All nine deployments report 1/1 available.
+
+All three independent checks **passed**:
+
+| Order ID | Product UUID | Quantity | Unit / total cost |
+|---|---|---|---|
+| `3cb949a1-04fc-4ad3-8359-323bcac10e3a` | `cc789f85-1476-452a-8100-9e74502198e0` | 1 | 15 / 15 |
+| `82715af5-26d2-4f11-9a7e-a0f0b1b32b96` | same | 1 | 15 / 15 |
+| `fb00aff8-f91d-4ca3-9754-4e802bd14526` | same | 1 | 15 / 15 |
+
+Evidence: `~/Documents/Notes/Initiatives/grot-aaif-experiment/rollout-4e1693a/purchase-after-{1,2,3}.json`.
+These are application baseline checks, not agent experiment results.
+
+Before the user clarified the disposable-data preference, an online database dump
+and migration rehearsal were performed locally (60,000 rows, zero position mismatches).
+That dump was NOT restored into the redeployed application. No ongoing backup system
+was created. Do not repeat that preservation workflow for ordinary demo resets.
+
+For consumers retaining an existing database, V2 remains available: it separates list
+positions but cannot recover UUIDs or prices already overwritten by the old code.
+Old Orders writers are incompatible with the new schema. The original V1 is unchanged.
+The AAIF baseline is now passing; the candidate fault still needs its own reproducibility
+test before agent trials.
