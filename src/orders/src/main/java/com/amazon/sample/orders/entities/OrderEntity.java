@@ -37,7 +37,8 @@ public class OrderEntity {
   @Column(value = "order_id")
   private ShippingAddressEntity shippingAddress;
 
-  @MappedCollection(idColumn = "order_id", keyColumn = "product_id")
+  // List position must not overwrite the item's product identifier.
+  @MappedCollection(idColumn = "order_id", keyColumn = "item_position")
   private List<OrderItemEntity> items = new ArrayList<>();
 
   public OrderEntity() {}

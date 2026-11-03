@@ -29,11 +29,10 @@
  */
 
 export class OrderItem {
-  'price'?: number;
+  'unitCost'?: number;
   'productId'?: string;
   'quantity'?: number;
   'totalCost'?: number;
-  'name'?: string;
   static discriminator: string | undefined = undefined;
 
   static attributeTypeMap: Array<{
@@ -43,17 +42,12 @@ export class OrderItem {
   }> = [
     {
       name: 'unitCost',
-      baseName: 'price',
+      baseName: 'unitCost',
       type: 'number',
     },
     {
-      name: 'id',
+      name: 'productId',
       baseName: 'productId',
-      type: 'string',
-    },
-    {
-      name: 'name',
-      baseName: 'name',
       type: 'string',
     },
     {
