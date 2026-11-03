@@ -20,6 +20,7 @@ package com.amazon.sample.orders.services;
 
 import static io.restassured.RestAssured.given;
 import static org.hamcrest.Matchers.hasSize;
+import static org.junit.jupiter.api.Assertions.assertEquals;
 
 import com.amazon.sample.orders.entities.OrderEntity;
 import com.amazon.sample.orders.entities.OrderItemEntity;
@@ -36,6 +37,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.web.server.LocalServerPort;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 import org.testcontainers.containers.PostgreSQLContainer;
@@ -75,6 +77,34 @@ public class OrderServicePostgresTests {
 
   @Autowired
   OrderRepository orderRepository;
+
+  @Autowired
+  JdbcTemplate jdbc;
+
+  @Test
+  void shouldPersistUuidProductsAndPricesFromHttpRequest() {
+    String productId = "cc789f85-1476-452a-8100-9e74502198e0";
+    String id = given()
+      .contentType(ContentType.JSON)
+      .body("""
+        {
+          "items": [
+            {"productId": "cc789f85-1476-452a-8100-9e74502198e0", "quantity": 2, "unitCost": 15, "totalCost": 30},
+            {"productId": "87e89b11-d319-446d-b9be-50adcca5224a", "quantity": 1, "unitCost": 20, "totalCost": 20}
+          ],
+          "shippingAddress": {"firstName": "Demo", "lastName": "Probe", "email": "probe@example.test",
+            "address1": "1 Example Street", "city": "Demo", "state": "CA", "zipCode": "90210"}
+        }
+        """)
+      .post("/orders")
+      .then().statusCode(200).extract().path("id");
+    OrderEntity reloaded = orderRepository.findById(id).orElseThrow();
+    assertEquals(List.of(productId, "87e89b11-d319-446d-b9be-50adcca5224a"),
+      reloaded.getItems().stream().map(OrderItemEntity::getProductId).toList());
+    assertEquals(List.of(15, 20), reloaded.getItems().stream().map(OrderItemEntity::getUnitCost).toList());
+    assertEquals(productId, jdbc.queryForObject(
+      "SELECT product_id FROM order_items WHERE order_id = ? AND item_position = 0", String.class, id));
+  }
 
   @BeforeEach
   void setUp() {

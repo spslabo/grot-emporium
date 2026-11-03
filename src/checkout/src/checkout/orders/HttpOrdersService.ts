@@ -40,7 +40,12 @@ export class HttpOrdersService implements IOrdersService {
           zipCode: checkout.shippingAddress.zip,
           state: checkout.shippingAddress.state,
         },
-        items: checkout.items,
+        items: checkout.items.map((item) => ({
+          productId: item.id,
+          unitCost: item.price,
+          quantity: item.quantity,
+          totalCost: item.totalCost,
+        })),
       })
       .then((value) => {
         return value.body;

@@ -77,5 +77,5 @@ jobs:
         working-directory: src/checkout
       - run: node ../../.yarn/releases/yarn-4.11.0.cjs build
         working-directory: src/checkout
-      - run: node ../../.yarn/releases/yarn-4.11.0.cjs jest --runInBand span-profiling.spec.ts
+      - run: node ../../.yarn/releases/yarn-4.11.0.cjs jest --runInBand
         working-directory: src/checkout
